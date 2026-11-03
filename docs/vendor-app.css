@@ -1,0 +1,2107 @@
+.vapp {
+  --vapp-paper: #fff9ee;
+  --vapp-white: #fffdf7;
+  --vapp-ink: #1e2923;
+  --vapp-muted: #5f665f;
+  --vapp-line: #a9ae9e;
+  --vapp-green: #173d2d;
+  --vapp-green-2: #245840;
+  --vapp-tomato: #c34b2b;
+  --vapp-tomato-dark: #96351f;
+  --vapp-mustard: #e8bd52;
+  --vapp-soft: #ebeddd;
+  --vapp-danger: #9f2f25;
+  min-height: calc(100vh - 112px);
+  color: var(--vapp-ink);
+  background:
+    linear-gradient(rgba(30, 41, 35, 0.035) 1px, transparent 1px),
+    var(--vapp-paper);
+  background-size: 100% 34px;
+  border-bottom: 1px solid var(--vapp-ink);
+  font-family: "DM Sans", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.vapp *,
+.vapp *::before,
+.vapp *::after {
+  box-sizing: border-box;
+}
+
+.vapp h1,
+.vapp h2,
+.vapp h3,
+.vapp p {
+  margin: 0;
+}
+
+.vapp h1,
+.vapp h2,
+.vapp h3,
+.vapp .vapp-wordmark {
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  text-transform: uppercase;
+}
+
+.vapp h1,
+.vapp h2,
+.vapp h3 {
+  color: inherit;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 0.98;
+}
+
+.vapp p {
+  color: var(--vapp-muted);
+}
+
+.vapp a {
+  color: inherit;
+}
+
+.vapp button,
+.vapp input,
+.vapp select,
+.vapp textarea {
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.vapp button:focus-visible,
+.vapp a:focus-visible,
+.vapp input:focus-visible,
+.vapp select:focus-visible,
+.vapp textarea:focus-visible {
+  outline: 3px solid var(--vapp-mustard);
+  outline-offset: 3px;
+}
+
+.vapp .vapp-preview-bar {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 7px 24px;
+  color: var(--vapp-white);
+  background: var(--vapp-tomato);
+  border-block: 1px solid var(--vapp-ink);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-preview-bar strong {
+  font-weight: 800;
+}
+
+.vapp .vapp-preview-bar span:last-child {
+  opacity: 0.88;
+}
+
+.vapp .vapp-frame {
+  display: grid;
+  width: min(1600px, 100%);
+  min-height: calc(100vh - 146px);
+  margin: 0 auto;
+  grid-template-columns: 286px minmax(0, 1fr);
+  border-inline: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-sidebar {
+  position: sticky;
+  top: 84px;
+  z-index: 8;
+  display: flex;
+  height: calc(100vh - 84px);
+  min-height: 650px;
+  flex-direction: column;
+  align-self: start;
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border-right: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-side-head {
+  padding: 34px 28px 26px;
+  border-bottom: 1px solid rgba(255, 249, 238, 0.35);
+}
+
+.vapp .vapp-side-head .vapp-kicker {
+  color: var(--vapp-mustard);
+}
+
+.vapp .vapp-wordmark {
+  display: block;
+  margin: 14px 0 19px;
+  color: var(--vapp-paper);
+  font-size: 59px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 0.76;
+  text-decoration: none;
+}
+
+.vapp .vapp-side-head p {
+  max-width: 210px;
+  color: rgba(255, 249, 238, 0.76);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.vapp .vapp-kicker {
+  display: block;
+  color: var(--vapp-tomato);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-nav {
+  display: grid;
+}
+
+.vapp .vapp-nav-link {
+  display: grid;
+  min-height: 76px;
+  align-items: center;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 24px;
+  color: var(--vapp-paper);
+  border-bottom: 1px solid rgba(255, 249, 238, 0.24);
+  text-decoration: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.vapp .vapp-nav-link:hover {
+  color: var(--vapp-ink);
+  background: var(--vapp-mustard);
+}
+
+.vapp .vapp-nav-link.is-active,
+.vapp .vapp-nav-link[aria-current="page"] {
+  color: var(--vapp-green);
+  background: var(--vapp-paper);
+  box-shadow: inset 8px 0 0 var(--vapp-tomato);
+}
+
+.vapp .vapp-nav-number {
+  color: var(--vapp-mustard);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.vapp .vapp-nav-link.is-active .vapp-nav-number,
+.vapp .vapp-nav-link:hover .vapp-nav-number {
+  color: var(--vapp-tomato);
+}
+
+.vapp .vapp-nav-link strong,
+.vapp .vapp-nav-link small {
+  display: block;
+}
+
+.vapp .vapp-nav-link strong {
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-nav-link small {
+  margin-top: 5px;
+  font-size: 10px;
+  line-height: 1.3;
+  opacity: 0.68;
+}
+
+.vapp .vapp-side-foot {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+  padding: 22px 28px 28px;
+  border-top: 1px solid rgba(255, 249, 238, 0.35);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.vapp .vapp-side-foot span {
+  color: rgba(255, 249, 238, 0.64);
+}
+
+.vapp .vapp-side-foot .vapp-account-label {
+  color: var(--vapp-mustard);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-side-foot .vapp-account-name {
+  overflow: hidden;
+  color: var(--vapp-paper);
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 20px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vapp .vapp-side-foot a {
+  color: var(--vapp-mustard);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.vapp .vapp-main {
+  position: relative;
+  min-width: 0;
+  padding: clamp(34px, 4.5vw, 72px) clamp(28px, 4.5vw, 72px) 88px;
+  background: rgba(255, 249, 238, 0.88);
+}
+
+.vapp .vapp-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 30px;
+  margin-bottom: 30px;
+  padding-bottom: 26px;
+  border-bottom: 3px solid var(--vapp-ink);
+}
+
+.vapp .vapp-page-head > div {
+  min-width: 0;
+}
+
+.vapp .vapp-page-head h1 {
+  max-width: 900px;
+  margin-top: 9px;
+  color: var(--vapp-green);
+  font-size: clamp(51px, 5.6vw, 88px);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.vapp .vapp-page-head p {
+  max-width: 720px;
+  margin-top: 15px;
+  color: var(--vapp-muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.vapp .vapp-button {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 11px 18px;
+  color: var(--vapp-white);
+  background: var(--vapp-tomato);
+  border: 2px solid var(--vapp-tomato);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: background-color 130ms ease, border-color 130ms ease, color 130ms ease;
+}
+
+.vapp .vapp-button:hover {
+  background: var(--vapp-tomato-dark);
+  border-color: var(--vapp-tomato-dark);
+}
+
+.vapp .vapp-button.outline {
+  color: var(--vapp-ink);
+  background: transparent;
+  border-color: var(--vapp-ink);
+}
+
+.vapp .vapp-button.outline:hover {
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border-color: var(--vapp-green);
+}
+
+.vapp .vapp-button.ink {
+  color: var(--vapp-paper);
+  background: var(--vapp-ink);
+  border-color: var(--vapp-ink);
+}
+
+.vapp .vapp-button.ink:hover {
+  background: var(--vapp-green-2);
+  border-color: var(--vapp-green-2);
+}
+
+.vapp .vapp-button.small {
+  min-height: 38px;
+  padding: 8px 13px;
+  font-size: 10px;
+}
+
+.vapp .vapp-button:disabled {
+  color: #777d75;
+  background: #d8d9d0;
+  border-color: #b9bbae;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.vapp .vapp-scoreboard {
+  display: grid;
+  margin-bottom: 28px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 1px solid var(--vapp-ink);
+  border-left: 1px solid var(--vapp-ink);
+  background: var(--vapp-white);
+}
+
+.vapp .vapp-metric {
+  position: relative;
+  display: grid;
+  min-height: 140px;
+  align-content: space-between;
+  gap: 12px;
+  padding: 18px;
+  border-right: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-metric > span {
+  color: var(--vapp-tomato);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.vapp .vapp-metric > strong {
+  color: var(--vapp-green);
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: clamp(43px, 4vw, 65px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 0.8;
+}
+
+.vapp .vapp-metric b,
+.vapp .vapp-metric small {
+  display: block;
+}
+
+.vapp .vapp-metric b {
+  font-size: 11px;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-metric small {
+  margin-top: 3px;
+  color: var(--vapp-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.vapp .vapp-overview-grid {
+  display: grid;
+  align-items: start;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(400px, 1.2fr);
+  gap: 28px;
+}
+
+.vapp .vapp-poster-panel {
+  border: 1px solid var(--vapp-ink);
+  background: var(--vapp-mustard);
+}
+
+.vapp .vapp-poster-panel.mustard {
+  background: var(--vapp-mustard);
+}
+
+.vapp .vapp-panel-title {
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-panel-title > span {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.vapp .vapp-panel-title h2 {
+  max-width: 390px;
+  margin-top: 10px;
+  font-size: clamp(43px, 4vw, 62px);
+  font-weight: 800;
+}
+
+.vapp .vapp-task-list > a {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  padding: 17px 22px;
+  border-bottom: 1px solid var(--vapp-ink);
+  text-decoration: none;
+}
+
+.vapp .vapp-task-list > a:last-child {
+  border-bottom: 0;
+}
+
+.vapp .vapp-task-list > a:hover {
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+}
+
+.vapp .vapp-task-list > a > span {
+  color: var(--vapp-tomato-dark);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.vapp .vapp-task-list strong,
+.vapp .vapp-task-list small {
+  display: block;
+}
+
+.vapp .vapp-task-list strong {
+  font-size: 13px;
+}
+
+.vapp .vapp-task-list small {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  opacity: 0.72;
+}
+
+.vapp .vapp-all-set {
+  padding: 26px 24px 30px;
+}
+
+.vapp .vapp-all-set strong {
+  display: block;
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 29px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-all-set p {
+  margin-top: 10px;
+  color: var(--vapp-ink);
+  font-size: 12px;
+}
+
+.vapp .vapp-ledger,
+.vapp .vapp-stack,
+.vapp .vapp-profile-preview-wrap,
+.vapp .vapp-canvas-column,
+.vapp .vapp-campaign-shelf {
+  min-width: 0;
+}
+
+.vapp .vapp-section-bar,
+.vapp .vapp-canvas-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--vapp-ink);
+}
+
+.vapp .vapp-section-bar h2,
+.vapp .vapp-canvas-head h2 {
+  margin-top: 5px;
+  font-size: 34px;
+}
+
+.vapp .vapp-section-bar > span,
+.vapp .vapp-section-bar > a {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-ledger-row {
+  display: flex;
+  min-height: 105px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--vapp-line);
+  border-top: 0;
+  background: var(--vapp-white);
+}
+
+.vapp .vapp-ledger-row:first-of-type {
+  border-top: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-ledger-row h3 {
+  margin: 6px 0 4px;
+  font-size: 28px;
+}
+
+.vapp .vapp-ledger-row p {
+  font-size: 11px;
+}
+
+.vapp .vapp-ledger-row > strong {
+  max-width: 120px;
+  color: var(--vapp-tomato-dark);
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 24px;
+  line-height: 0.95;
+  text-align: right;
+}
+
+.vapp .vapp-ground-rules {
+  display: grid;
+  margin-top: 30px;
+  padding: 19px 22px;
+  grid-template-columns: minmax(130px, 0.3fr) minmax(0, 1fr);
+  gap: 28px;
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-ground-rules strong {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-ground-rules p {
+  color: rgba(255, 249, 238, 0.8);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.vapp .vapp-public-notice {
+  display: grid;
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  grid-template-columns: minmax(150px, 0.3fr) minmax(0, 1fr);
+  gap: 22px;
+  color: var(--vapp-ink);
+  background: var(--vapp-mustard);
+  border: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-public-notice strong {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.vapp .vapp-public-notice p {
+  color: var(--vapp-ink);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.vapp .vapp-work-grid,
+.vapp .vapp-profile-grid,
+.vapp .vapp-promo-grid {
+  display: grid;
+  align-items: start;
+  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+  gap: clamp(24px, 3vw, 44px);
+}
+
+.vapp .vapp-editor {
+  min-width: 0;
+  padding: 0 24px 26px;
+  background: var(--vapp-white);
+  border: 1px solid var(--vapp-ink);
+  box-shadow: 8px 8px 0 rgba(23, 61, 45, 0.12);
+}
+
+.vapp .vapp-editor-head {
+  display: flex;
+  min-height: 60px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 -24px 23px;
+  padding: 13px 18px;
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border-bottom: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-editor-head.tomato {
+  background: var(--vapp-tomato);
+}
+
+.vapp .vapp-editor-head.mustard {
+  color: var(--vapp-ink);
+  background: var(--vapp-mustard);
+}
+
+.vapp .vapp-editor-head.green {
+  background: var(--vapp-green);
+}
+
+.vapp .vapp-editor-head span {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.vapp .vapp-editor-head strong {
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-step,
+.vapp .vapp-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 21px 0;
+  border: 0;
+  border-bottom: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-step:first-of-type,
+.vapp .vapp-fieldset:first-of-type {
+  padding-top: 3px;
+}
+
+.vapp .vapp-step legend,
+.vapp .vapp-fieldset legend {
+  display: block;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 0;
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-step legend span {
+  margin-right: 8px;
+  color: var(--vapp-tomato);
+  font-family: "DM Sans", Arial, sans-serif;
+  font-size: 9px;
+}
+
+.vapp .vapp-field,
+.vapp .vapp-step {
+  min-width: 0;
+}
+
+.vapp .vapp-editor > .vapp-field {
+  margin-top: 18px;
+}
+
+.vapp .vapp-field label,
+.vapp .vapp-step > label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.075em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-optional {
+  color: var(--vapp-muted);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.vapp .vapp-field input,
+.vapp .vapp-field select,
+.vapp .vapp-field textarea,
+.vapp .vapp-step > select,
+.vapp .vapp-step > textarea {
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 12px;
+  color: var(--vapp-ink);
+  background: var(--vapp-paper);
+  border: 1px solid #838a7f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.vapp .vapp-field textarea,
+.vapp .vapp-step > textarea {
+  min-height: 105px;
+  resize: vertical;
+}
+
+.vapp .vapp-field input::placeholder,
+.vapp .vapp-field textarea::placeholder,
+.vapp .vapp-step textarea::placeholder {
+  color: #7d817a;
+  opacity: 1;
+}
+
+.vapp .vapp-field input:focus,
+.vapp .vapp-field select:focus,
+.vapp .vapp-field textarea:focus,
+.vapp .vapp-step > select:focus,
+.vapp .vapp-step > textarea:focus {
+  border-color: var(--vapp-green);
+  background: var(--vapp-white);
+}
+
+.vapp .vapp-two-fields,
+.vapp .vapp-three-fields {
+  display: grid;
+  gap: 15px;
+}
+
+.vapp .vapp-two-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vapp .vapp-three-fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.vapp .vapp-count {
+  margin-top: 5px;
+  color: var(--vapp-muted);
+  font-size: 9px;
+  text-align: right;
+}
+
+.vapp .vapp-label-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.vapp .vapp-label-line .vapp-text-button {
+  margin-bottom: 7px;
+}
+
+.vapp .vapp-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vapp .vapp-choice {
+  position: relative;
+  cursor: pointer;
+}
+
+.vapp .vapp-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.vapp .vapp-choice > span {
+  display: flex;
+  min-height: 82px;
+  flex-direction: column;
+  justify-content: center;
+  padding: 13px 14px;
+  background: var(--vapp-paper);
+  border: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-choice input:checked + span {
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border-color: var(--vapp-green);
+  box-shadow: inset 0 -6px 0 var(--vapp-mustard);
+}
+
+.vapp .vapp-choice input:focus-visible + span {
+  outline: 3px solid var(--vapp-tomato);
+  outline-offset: 2px;
+}
+
+.vapp .vapp-choice strong,
+.vapp .vapp-choice small {
+  display: block;
+}
+
+.vapp .vapp-choice strong {
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.vapp .vapp-choice small {
+  margin-top: 6px;
+  font-size: 9px;
+  line-height: 1.35;
+  opacity: 0.72;
+}
+
+.vapp .vapp-occurrence {
+  display: grid;
+  gap: 5px;
+  min-height: 80px;
+  margin-top: 10px;
+  padding: 14px 16px;
+  background: var(--vapp-soft);
+  border: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-occurrence strong {
+  font-size: 12px;
+}
+
+.vapp .vapp-occurrence span,
+.vapp .vapp-occurrence p {
+  color: var(--vapp-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.vapp .vapp-review-strip {
+  display: grid;
+  align-items: center;
+  margin-top: 13px;
+  padding: 13px 14px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+}
+
+.vapp .vapp-review-strip > span {
+  color: var(--vapp-mustard);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.vapp .vapp-review-strip > strong,
+.vapp .vapp-review-strip > b {
+  font-size: 11px;
+}
+
+.vapp .vapp-review-strip > b {
+  text-align: right;
+}
+
+.vapp .vapp-review-strip > small {
+  grid-column: 2 / -1;
+  color: rgba(255, 249, 238, 0.72);
+  font-size: 9px;
+}
+
+.vapp .vapp-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vapp .vapp-check-grid label {
+  position: relative;
+  cursor: pointer;
+}
+
+.vapp .vapp-check-grid input {
+  position: absolute;
+  top: 13px;
+  left: 12px;
+  width: 17px;
+  height: 17px;
+  accent-color: var(--vapp-green);
+}
+
+.vapp .vapp-check-grid span {
+  display: block;
+  min-height: 66px;
+  padding: 11px 10px 10px 39px;
+  background: var(--vapp-paper);
+  border: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-check-grid input:checked + span {
+  background: var(--vapp-soft);
+  border-color: var(--vapp-green);
+}
+
+.vapp .vapp-check-grid strong,
+.vapp .vapp-check-grid small {
+  display: block;
+}
+
+.vapp .vapp-check-grid strong {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.vapp .vapp-check-grid small {
+  margin-top: 4px;
+  color: var(--vapp-muted);
+  font-size: 9px;
+}
+
+.vapp .vapp-offer-preview {
+  display: grid;
+  gap: 8px;
+  margin: 20px 0 4px;
+  padding: 18px 20px 19px 26px;
+  background: var(--vapp-mustard);
+  border: 1px solid var(--vapp-ink);
+  border-left: 8px solid var(--vapp-tomato);
+}
+
+.vapp .vapp-offer-preview > span {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.vapp .vapp-offer-preview > strong {
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 31px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-offer-preview p {
+  color: var(--vapp-ink);
+  font-size: 11px;
+}
+
+.vapp .vapp-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.vapp .vapp-form-actions.split {
+  justify-content: space-between;
+}
+
+.vapp .vapp-form-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vapp .vapp-form-actions > p {
+  max-width: 230px;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.vapp .vapp-text-button {
+  padding: 3px 0;
+  color: var(--vapp-green);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.vapp .vapp-text-button:hover,
+.vapp .vapp-text-link:hover {
+  color: var(--vapp-tomato);
+}
+
+.vapp .vapp-text-button.danger {
+  color: var(--vapp-danger);
+}
+
+.vapp .vapp-text-link {
+  display: inline-flex;
+  margin-top: 12px;
+  color: var(--vapp-green);
+  border-bottom: 1px solid currentColor;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.vapp .vapp-record {
+  margin-bottom: 12px;
+  padding: 18px;
+  background: var(--vapp-white);
+  border: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-record.is-muted {
+  background: #eeeee8;
+  opacity: 0.72;
+}
+
+.vapp .vapp-record-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: var(--vapp-muted);
+  font-size: 9px;
+}
+
+.vapp .vapp-record h3 {
+  margin: 12px 0 7px;
+  font-size: 31px;
+}
+
+.vapp .vapp-record > p {
+  font-size: 11px;
+}
+
+.vapp .vapp-record-note {
+  margin-top: 14px;
+  padding: 11px 12px;
+  background: var(--vapp-soft);
+  border-left: 4px solid var(--vapp-mustard);
+  font-style: italic;
+}
+
+.vapp .vapp-record dl {
+  display: grid;
+  margin: 15px 0 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-record dl > div {
+  padding: 10px 10px 0 0;
+}
+
+.vapp .vapp-record dt {
+  color: var(--vapp-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-record dd {
+  margin: 3px 0 0;
+  font-size: 11px;
+}
+
+.vapp .vapp-record-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+  margin-top: 17px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 4px 7px;
+  color: var(--vapp-ink);
+  background: var(--vapp-soft);
+  border: 1px solid var(--vapp-line);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-status.requested,
+.vapp .vapp-status.published {
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border-color: var(--vapp-green);
+}
+
+.vapp .vapp-status.cancelled,
+.vapp .vapp-status.archived {
+  color: #5e625d;
+  background: #dedfd8;
+}
+
+.vapp .vapp-status.draft {
+  background: var(--vapp-mustard);
+  border-color: #c99a2d;
+}
+
+.vapp .vapp-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.vapp .vapp-tag-row > span {
+  padding: 5px 8px;
+  color: var(--vapp-green);
+  background: var(--vapp-soft);
+  border: 1px solid var(--vapp-line);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-visibility {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  color: var(--vapp-ink);
+  background: var(--vapp-mustard);
+  border: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-visibility strong,
+.vapp .vapp-visibility span {
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.vapp .vapp-visibility span {
+  color: #58471f;
+  text-align: right;
+}
+
+.vapp .vapp-visibility.is-public {
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+}
+
+.vapp .vapp-visibility.is-public span {
+  color: rgba(255, 249, 238, 0.72);
+}
+
+.vapp .vapp-empty {
+  display: grid;
+  align-items: start;
+  padding: 28px 24px;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 18px;
+  background: var(--vapp-soft);
+  border: 1px dashed #8e9586;
+}
+
+.vapp .vapp-empty > span {
+  color: var(--vapp-tomato);
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 0.9;
+}
+
+.vapp .vapp-empty h3 {
+  font-size: 28px;
+}
+
+.vapp .vapp-empty p {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.vapp .vapp-draft-notice,
+.vapp .vapp-inline-warning {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 15px;
+  background: var(--vapp-mustard);
+  border: 1px solid var(--vapp-ink);
+  font-size: 9px;
+}
+
+.vapp .vapp-draft-notice span {
+  color: #58471f;
+}
+
+.vapp .vapp-draft-notice button {
+  margin-left: auto;
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.vapp .vapp-inline-warning {
+  display: block;
+  margin: 0 -24px 18px;
+  padding: 16px 24px;
+}
+
+.vapp .vapp-inline-warning strong {
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 24px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-inline-warning p {
+  margin: 5px 0 8px;
+  color: var(--vapp-ink);
+  font-size: 10px;
+}
+
+.vapp .vapp-inline-warning a {
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.vapp .vapp-photo-control {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+}
+
+.vapp .vapp-photo-thumb {
+  display: grid;
+  width: 92px;
+  height: 92px;
+  flex: 0 0 92px;
+  place-items: center;
+  overflow: hidden;
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border: 1px solid var(--vapp-ink);
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 38px;
+  font-weight: 800;
+}
+
+.vapp .vapp-photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vapp .vapp-photo-control p {
+  margin: 8px 0 5px;
+  font-size: 9px;
+}
+
+.vapp .vapp-profile-preview-wrap,
+.vapp .vapp-canvas-column {
+  position: sticky;
+  top: 110px;
+}
+
+.vapp .vapp-directory-card {
+  overflow: hidden;
+  background: var(--vapp-white);
+  border: 1px solid var(--vapp-ink);
+  box-shadow: 8px 8px 0 var(--vapp-mustard);
+}
+
+.vapp .vapp-directory-image {
+  position: relative;
+  display: grid;
+  min-height: 265px;
+  place-items: center;
+  overflow: hidden;
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border-bottom: 1px solid var(--vapp-ink);
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 105px;
+  font-weight: 800;
+}
+
+.vapp .vapp-directory-image img {
+  width: 100%;
+  height: 265px;
+  object-fit: cover;
+}
+
+.vapp .vapp-directory-image > span:last-child {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 7px 10px;
+  color: var(--vapp-ink);
+  background: var(--vapp-mustard);
+  border-top: 1px solid var(--vapp-ink);
+  border-left: 1px solid var(--vapp-ink);
+  font-family: "DM Sans", Arial, sans-serif;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.vapp .vapp-directory-body {
+  padding: 21px 22px 24px;
+}
+
+.vapp .vapp-directory-city {
+  color: var(--vapp-tomato);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-directory-body h3 {
+  margin: 6px 0 12px;
+  font-size: 40px;
+  overflow-wrap: anywhere;
+}
+
+.vapp .vapp-directory-body > p:not(.vapp-directory-city) {
+  margin-top: 13px;
+  font-size: 11px;
+}
+
+.vapp .vapp-directory-short {
+  color: var(--vapp-ink) !important;
+  font-size: 13px !important;
+  font-weight: 600;
+}
+
+.vapp .vapp-directory-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-directory-links a {
+  color: var(--vapp-green);
+  font-size: 10px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.vapp .vapp-directory-links a:hover {
+  color: var(--vapp-tomato);
+  text-decoration: underline;
+}
+
+.vapp .vapp-canvas-wrap {
+  display: grid;
+  max-height: min(67vh, 720px);
+  place-items: start center;
+  overflow: auto;
+  padding: 18px;
+  background: #dfe2d4;
+  border: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-canvas-wrap canvas {
+  display: block;
+  width: min(100%, 590px);
+  height: auto;
+  background: var(--vapp-paper);
+  border: 1px solid var(--vapp-ink);
+  box-shadow: 7px 7px 0 rgba(23, 61, 45, 0.18);
+}
+
+.vapp .vapp-canvas-column > .vapp-fine,
+.vapp .vapp-profile-preview-wrap > .vapp-fine {
+  margin-top: 13px;
+}
+
+.vapp .vapp-fine {
+  color: var(--vapp-muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.vapp .vapp-campaign-shelf {
+  margin-top: 44px;
+}
+
+.vapp .vapp-campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.vapp .vapp-campaign-grid > .vapp-empty {
+  grid-column: 1 / -1;
+}
+
+.vapp .vapp-campaign-card {
+  min-width: 0;
+  padding: 17px;
+  background: var(--vapp-white);
+  border: 1px solid var(--vapp-line);
+  border-top: 6px solid var(--vapp-tomato);
+}
+
+.vapp .vapp-campaign-card > span {
+  color: var(--vapp-tomato);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+}
+
+.vapp .vapp-campaign-card h3 {
+  margin: 9px 0 8px;
+  font-size: 27px;
+  overflow-wrap: anywhere;
+}
+
+.vapp .vapp-campaign-card p,
+.vapp .vapp-campaign-card > strong {
+  display: block;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.vapp .vapp-campaign-card > strong {
+  margin-top: 11px;
+  color: var(--vapp-green);
+}
+
+.vapp .vapp-campaign-card > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  margin-top: 17px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vapp-line);
+}
+
+.vapp .vapp-live {
+  position: fixed;
+  top: 122px;
+  right: 24px;
+  z-index: 80;
+  width: min(390px, calc(100vw - 32px));
+  padding: 13px 16px;
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border: 1px solid var(--vapp-ink);
+  box-shadow: 7px 7px 0 rgba(30, 41, 35, 0.22);
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+  transition: opacity 130ms ease, transform 130ms ease;
+}
+
+.vapp .vapp-live.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.vapp .vapp-live.is-error {
+  background: var(--vapp-danger);
+}
+
+.vapp .vapp-loading {
+  min-height: 430px;
+  padding: 45px 0;
+}
+
+.vapp .vapp-loading-line {
+  height: 52px;
+  margin-top: 18px;
+  background: linear-gradient(90deg, #e4e5dc 25%, #f4f1e8 48%, #e4e5dc 72%);
+  background-size: 300% 100%;
+  animation: vapp-skeleton 1.4s ease infinite;
+}
+
+.vapp .vapp-loading-line.short {
+  width: 62%;
+}
+
+.vapp .vapp-loading p {
+  margin-top: 18px;
+  font-size: 11px;
+}
+
+.vapp .vapp-error-panel {
+  display: grid;
+  min-height: 370px;
+  align-content: center;
+  grid-template-columns: minmax(90px, 0.25fr) minmax(0, 1fr);
+  gap: 30px;
+  padding: 38px;
+  background: var(--vapp-mustard);
+  border: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-panel-number {
+  color: var(--vapp-tomato-dark);
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: clamp(45px, 6vw, 86px);
+  font-weight: 800;
+  line-height: 0.82;
+}
+
+.vapp .vapp-error-panel h1 {
+  max-width: 690px;
+  font-size: clamp(46px, 6vw, 78px);
+}
+
+.vapp .vapp-error-panel p {
+  max-width: 600px;
+  margin: 16px 0 22px;
+  color: var(--vapp-ink);
+  font-size: 13px;
+}
+
+.vapp .vapp-auth-features {
+  display: grid;
+  max-width: 650px;
+  gap: 8px;
+  margin: 0 0 26px;
+  padding-left: 19px;
+  color: var(--vapp-ink);
+  font-size: 12px;
+}
+
+.vapp .vapp-confirm-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  color: var(--vapp-ink);
+  background: var(--vapp-paper);
+  border: 2px solid var(--vapp-ink);
+  border-radius: 0;
+  box-shadow: 12px 12px 0 rgba(30, 41, 35, 0.35);
+}
+
+.vapp .vapp-confirm-dialog::backdrop {
+  background: rgba(23, 61, 45, 0.78);
+}
+
+.vapp .vapp-confirm-head {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border-bottom: 2px solid var(--vapp-ink);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.vapp .vapp-confirm-head strong {
+  color: var(--vapp-mustard);
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.vapp .vapp-confirm-body {
+  padding: 28px;
+}
+
+.vapp .vapp-confirm-body h2 {
+  font-size: clamp(38px, 7vw, 58px);
+}
+
+.vapp .vapp-confirm-body p {
+  margin-top: 16px;
+  color: var(--vapp-ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.vapp .vapp-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.vapp .vapp-button.danger {
+  color: var(--vapp-paper);
+  background: var(--vapp-tomato);
+}
+
+.vapp .vapp-button.danger:hover {
+  background: var(--vapp-tomato-dark);
+}
+
+.vapp .vapp-visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.vapp [hidden] {
+  display: none !important;
+}
+
+@keyframes vapp-skeleton {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+@media (max-width: 1180px) {
+  .vapp .vapp-frame {
+    display: block;
+    border-inline: 0;
+  }
+
+  .vapp .vapp-sidebar {
+    position: static;
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--vapp-ink);
+  }
+
+  .vapp .vapp-side-head {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 20px 28px;
+  }
+
+  .vapp .vapp-side-head .vapp-kicker {
+    display: none;
+  }
+
+  .vapp .vapp-wordmark {
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: 42px;
+  }
+
+  .vapp .vapp-side-head p {
+    max-width: none;
+    font-size: 11px;
+  }
+
+  .vapp .vapp-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .vapp .vapp-nav-link {
+    min-height: 68px;
+    padding: 12px 14px;
+    grid-template-columns: 22px minmax(0, 1fr);
+    border-right: 1px solid rgba(255, 249, 238, 0.24);
+  }
+
+  .vapp .vapp-nav-link.is-active,
+  .vapp .vapp-nav-link[aria-current="page"] {
+    box-shadow: inset 0 -6px 0 var(--vapp-tomato);
+  }
+
+  .vapp .vapp-nav-link strong {
+    font-size: 19px;
+  }
+
+  .vapp .vapp-nav-link small {
+    display: none;
+  }
+
+  .vapp .vapp-side-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px 18px;
+    margin-top: 0;
+    padding: 12px 28px;
+  }
+
+  .vapp .vapp-side-foot .vapp-account-name {
+    max-width: 240px;
+    font-size: 17px;
+  }
+
+  .vapp .vapp-side-foot > span:not(.vapp-account-label) {
+    margin-right: auto;
+  }
+
+  .vapp .vapp-main {
+    max-width: 1240px;
+    margin: auto;
+  }
+
+  .vapp .vapp-profile-preview-wrap,
+  .vapp .vapp-canvas-column {
+    top: 90px;
+  }
+
+  .vapp .vapp-campaign-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 920px) {
+  .vapp .vapp-page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vapp .vapp-scoreboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vapp .vapp-metric:nth-child(2) {
+    border-bottom: 1px solid var(--vapp-ink);
+  }
+
+  .vapp .vapp-metric:first-child {
+    border-bottom: 1px solid var(--vapp-ink);
+  }
+
+  .vapp .vapp-overview-grid,
+  .vapp .vapp-work-grid,
+  .vapp .vapp-profile-grid,
+  .vapp .vapp-promo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vapp .vapp-profile-preview-wrap,
+  .vapp .vapp-canvas-column {
+    position: static;
+  }
+
+  .vapp .vapp-canvas-wrap {
+    max-height: none;
+  }
+
+  .vapp .vapp-directory-card {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+  }
+
+  .vapp .vapp-directory-image {
+    min-height: 100%;
+    border-right: 1px solid var(--vapp-ink);
+    border-bottom: 0;
+  }
+
+  .vapp .vapp-directory-image img {
+    height: 100%;
+    min-height: 285px;
+  }
+}
+
+@media (max-width: 680px) {
+  .vapp {
+    font-size: 14px;
+  }
+
+  .vapp .vapp-preview-bar {
+    justify-content: flex-start;
+    padding-inline: 16px;
+    font-size: 8px;
+  }
+
+  .vapp .vapp-side-head {
+    padding: 16px;
+  }
+
+  .vapp .vapp-wordmark {
+    font-size: 35px;
+  }
+
+  .vapp .vapp-side-head p {
+    font-size: 9px;
+  }
+
+  .vapp .vapp-nav {
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .vapp .vapp-nav-link {
+    width: max-content;
+    min-width: max-content;
+    min-height: 62px;
+    flex: 0 0 auto;
+    grid-template-columns: 20px minmax(0, 1fr);
+    padding: 11px 12px;
+  }
+
+  .vapp .vapp-nav-link strong {
+    font-size: 17px;
+  }
+
+  .vapp .vapp-main {
+    padding: 28px 16px 60px;
+  }
+
+  .vapp .vapp-side-foot {
+    padding: 10px 16px;
+    gap: 6px 13px;
+    font-size: 8px;
+  }
+
+  .vapp .vapp-side-foot .vapp-account-name {
+    max-width: 150px;
+    font-size: 15px;
+  }
+
+  .vapp .vapp-page-head {
+    gap: 20px;
+    margin-bottom: 22px;
+    padding-bottom: 20px;
+  }
+
+  .vapp .vapp-page-head h1 {
+    font-size: clamp(47px, 15vw, 67px);
+  }
+
+  .vapp .vapp-page-head p {
+    font-size: 12px;
+  }
+
+  .vapp .vapp-page-head .vapp-button {
+    width: 100%;
+  }
+
+  .vapp .vapp-scoreboard {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .vapp .vapp-metric {
+    min-height: 118px;
+    padding: 14px;
+  }
+
+  .vapp .vapp-metric > strong {
+    font-size: 43px;
+  }
+
+  .vapp .vapp-editor {
+    padding: 0 16px 20px;
+    box-shadow: 5px 5px 0 rgba(23, 61, 45, 0.12);
+  }
+
+  .vapp .vapp-editor-head {
+    margin: 0 -16px 20px;
+    padding: 12px 14px;
+  }
+
+  .vapp .vapp-editor-head strong {
+    font-size: 20px;
+  }
+
+  .vapp .vapp-two-fields,
+  .vapp .vapp-three-fields,
+  .vapp .vapp-choice-grid,
+  .vapp .vapp-check-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vapp .vapp-form-actions,
+  .vapp .vapp-form-actions.split {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .vapp .vapp-form-actions > div {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .vapp .vapp-form-actions .vapp-button {
+    width: 100%;
+  }
+
+  .vapp .vapp-form-actions > p {
+    max-width: none;
+  }
+
+  .vapp .vapp-ground-rules {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .vapp .vapp-public-notice {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .vapp .vapp-directory-card {
+    display: block;
+  }
+
+  .vapp .vapp-directory-image {
+    min-height: 230px;
+    border-right: 0;
+    border-bottom: 1px solid var(--vapp-ink);
+  }
+
+  .vapp .vapp-directory-image img {
+    height: 230px;
+    min-height: 0;
+  }
+
+  .vapp .vapp-campaign-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vapp .vapp-canvas-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vapp .vapp-canvas-head .vapp-button {
+    width: 100%;
+  }
+
+  .vapp .vapp-live {
+    top: 96px;
+    right: 16px;
+  }
+
+  .vapp .vapp-error-panel {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 28px 20px;
+  }
+
+  .vapp .vapp-confirm-body {
+    padding: 22px 18px;
+  }
+
+  .vapp .vapp-confirm-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .vapp .vapp-confirm-actions .vapp-button {
+    width: 100%;
+  }
+
+  .vapp .vapp-panel-number {
+    font-size: 45px;
+  }
+
+  .vapp .vapp-draft-notice {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vapp .vapp-draft-notice button {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 430px) {
+  .vapp .vapp-side-head p {
+    display: none;
+  }
+
+  .vapp .vapp-scoreboard {
+    grid-template-columns: 1fr;
+  }
+
+  .vapp .vapp-metric {
+    min-height: 105px;
+    grid-template-columns: 32px 80px minmax(0, 1fr);
+    align-items: center;
+    align-content: center;
+    border-bottom: 1px solid var(--vapp-ink);
+  }
+
+  .vapp .vapp-metric:last-child {
+    border-bottom: 0;
+  }
+
+  .vapp .vapp-metric > strong {
+    font-size: 40px;
+  }
+
+  .vapp .vapp-review-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .vapp .vapp-review-strip > b,
+  .vapp .vapp-review-strip > small {
+    grid-column: 1;
+    text-align: left;
+  }
+
+  .vapp .vapp-form-actions > div {
+    grid-template-columns: 1fr;
+  }
+
+  .vapp .vapp-photo-control {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vapp .vapp-ledger-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vapp .vapp-ledger-row > strong {
+    max-width: none;
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vapp *,
+  .vapp *::before,
+  .vapp *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Keep every mobile navigation label readable while the rail scrolls. */
+@media (max-width: 680px) {
+  .vapp .vapp-nav { scrollbar-width: none; }
+  .vapp .vapp-nav::-webkit-scrollbar { display: none; }
+  .vapp .vapp-nav-link { flex: 0 0 auto; grid-template-columns: 20px max-content; min-width: 125px; gap: 10px; }
+}
+.vapp .vapp-task-list > a > small { grid-column: 2; margin-top: 0; }
+.vapp .vapp-task-list > a > span { grid-row: 1 / 3; }

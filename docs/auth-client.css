@@ -1,0 +1,276 @@
+.vapp .vapp-auth-layout {
+  display: grid;
+  min-height: 610px;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1.15fr);
+  color: var(--vapp-ink);
+  background: var(--vapp-white);
+  border: 2px solid var(--vapp-ink);
+  box-shadow: 10px 10px 0 rgba(23, 61, 45, 0.14);
+}
+
+.vapp .vapp-auth-poster {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(28px, 4vw, 54px);
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+  border-right: 2px solid var(--vapp-ink);
+}
+
+.vapp .vapp-auth-poster.mustard {
+  color: var(--vapp-ink);
+  background: var(--vapp-mustard);
+}
+
+.vapp .vapp-auth-poster .vapp-panel-number {
+  color: var(--vapp-mustard);
+  font-size: clamp(52px, 7vw, 94px);
+}
+
+.vapp .vapp-auth-poster.mustard .vapp-panel-number {
+  color: var(--vapp-tomato-dark);
+}
+
+.vapp .vapp-auth-poster h1 {
+  max-width: 540px;
+  margin-top: 24px;
+  font-size: clamp(48px, 6.4vw, 82px);
+}
+
+.vapp .vapp-auth-poster > p {
+  max-width: 500px;
+  margin-top: 20px;
+  color: rgba(255, 249, 238, 0.82);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.vapp .vapp-auth-poster.mustard > p {
+  color: var(--vapp-ink);
+}
+
+.vapp .vapp-auth-poster .vapp-auth-features {
+  margin-top: 28px;
+  color: rgba(255, 249, 238, 0.84);
+}
+
+.vapp .vapp-auth-poster.mustard .vapp-auth-features {
+  color: var(--vapp-ink);
+}
+
+.vapp .vapp-auth-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(28px, 5vw, 62px);
+}
+
+.vapp .vapp-auth-card > h2 {
+  margin-top: 16px;
+  overflow-wrap: anywhere;
+  font-size: clamp(38px, 5vw, 58px);
+}
+
+.vapp .vapp-auth-card > p {
+  margin-top: 18px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.vapp .vapp-auth-tabs {
+  display: grid;
+  margin: 18px 0 20px;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-auth-tabs button {
+  min-height: 44px;
+  padding: 9px 12px;
+  color: var(--vapp-ink);
+  background: var(--vapp-paper);
+  border: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-auth-tabs button + button {
+  border-left: 1px solid var(--vapp-ink);
+}
+
+.vapp .vapp-auth-tabs button[aria-pressed="true"] {
+  color: var(--vapp-paper);
+  background: var(--vapp-green);
+}
+
+.vapp .vapp-google-button {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 18px;
+  color: var(--vapp-ink);
+  background: var(--vapp-white);
+  border: 2px solid var(--vapp-ink);
+  font-weight: 800;
+}
+
+.vapp .vapp-google-button:hover {
+  background: var(--vapp-mustard);
+}
+
+.vapp .vapp-google-mark {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.vapp .vapp-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  color: var(--vapp-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vapp .vapp-auth-divider::before,
+.vapp .vapp-auth-divider::after {
+  height: 1px;
+  flex: 1;
+  background: var(--vapp-line);
+  content: "";
+}
+
+.vapp .vapp-auth-form,
+.vapp .vapp-auth-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.vapp .vapp-auth-form .vapp-field {
+  margin: 0;
+}
+
+.vapp .vapp-auth-form .vapp-field small {
+  display: block;
+  margin-top: 6px;
+  color: var(--vapp-muted);
+  font-size: 9px;
+}
+
+.vapp .vapp-auth-form > .vapp-button,
+.vapp .vapp-auth-stack > .vapp-button {
+  width: 100%;
+}
+
+.vapp .vapp-auth-form > .vapp-text-button,
+.vapp .vapp-auth-stack > .vapp-text-button {
+  justify-self: start;
+}
+
+.vapp .vapp-auth-message {
+  margin: 16px 0;
+  padding: 11px 13px;
+  color: var(--vapp-green);
+  background: var(--vapp-soft);
+  border: 1px solid var(--vapp-green);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.vapp .vapp-auth-message.is-error {
+  color: var(--vapp-tomato-dark);
+  background: #f8e4dc;
+  border-color: var(--vapp-tomato);
+}
+
+.vapp .vapp-auth-privacy {
+  margin-top: 22px !important;
+  padding-top: 14px;
+  border-top: 1px solid var(--vapp-line);
+  font-size: 9px !important;
+}
+
+.vapp .vapp-auth-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.vapp .vapp-side-foot button[data-auth-signout] {
+  justify-self: start;
+  padding: 0;
+  color: var(--vapp-mustard);
+  background: transparent;
+  border: 0;
+  font-size: inherit;
+  font-weight: 700;
+  text-align: left;
+}
+
+@media (max-width: 920px) {
+  .vapp .vapp-auth-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .vapp .vapp-auth-poster {
+    min-height: 360px;
+    border-right: 0;
+    border-bottom: 2px solid var(--vapp-ink);
+  }
+}
+
+@media (max-width: 680px) {
+  .vapp .vapp-auth-layout {
+    min-height: 0;
+    box-shadow: 5px 5px 0 rgba(23, 61, 45, 0.14);
+  }
+
+  .vapp .vapp-auth-poster,
+  .vapp .vapp-auth-card {
+    padding: 20px 18px;
+  }
+
+  .vapp .vapp-auth-poster {
+    min-height: 0;
+  }
+
+  .vapp .vapp-auth-poster .vapp-panel-number,
+  .vapp .vapp-auth-poster .vapp-auth-features {
+    display: none;
+  }
+
+  .vapp .vapp-auth-poster h1 {
+    margin-top: 0;
+    font-size: clamp(32px, 9vw, 40px);
+  }
+
+  .vapp .vapp-auth-poster > p {
+    margin-top: 10px;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .vapp .vapp-auth-links {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .vapp .vapp-auth-links .vapp-button {
+    width: 100%;
+  }
+}
