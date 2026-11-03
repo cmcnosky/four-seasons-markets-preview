@@ -439,7 +439,7 @@
     var name = state.profile.businessName || state.user.displayName || 'Vendor';
     var recent = state.reservations.slice().sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 3);
     var needs = [];
-    if (!state.profile.businessName) needs.push('<a href="#workspace/profile"><span>01</span><strong>Start your public profile</strong><small>Give shoppers a name, city, and reason to stop.</small></a>');
+    if (!state.profile.businessName) needs.push('<a href="#workspace/profile"><span>01</span><strong>Start your demo profile</strong><small>Give shoppers a name, city, and reason to stop.</small></a>');
     else if (!state.profile.published) needs.push('<a href="#workspace/profile"><span>01</span><strong>Publish your profile</strong><small>Your saved profile is still a draft.</small></a>');
     if (!activeReservations.length) needs.push('<a href="#workspace/reservations"><span>02</span><strong>Request a market date</strong><small>Choose one of the currently sourced November 7–8 dates.</small></a>');
     if (!publishedOffers.length) needs.push('<a href="#workspace/offers"><span>03</span><strong>Make a shopper offer</strong><small>Save a draft or publish it to your new directory profile.</small></a>');
@@ -460,7 +460,7 @@
           (recent.length ? recent.map(reservationRow).join('') : emptyState('00', 'No requests yet', 'Choose a sourced market date to start a preview request.', '<a class="vapp-text-link" href="#workspace/reservations">Open reservations →</a>')) +
         '</section>' +
       '</div>' +
-      '<section class="vapp-ground-rules"><strong>What this preview does</strong><p>It saves demo records in this browser. Publishing adds profiles and offers to your local directory; other visitors cannot see them. Clearing browser data removes your work. It does not charge a card, allocate a booth, or send requests to market staff.</p></section>';
+      '<section class="vapp-ground-rules"><strong>What this preview does</strong><p>It saves demo records in this browser. Publishing adds profiles and offers to your local directory; they are not shared with other browsers. Anyone using this browser profile can see the saved work. Clearing browser data removes it. It does not charge a card, allocate a booth, or send requests to market staff.</p></section>';
   }
 
   function metric(number, value, label, note) {
@@ -670,7 +670,7 @@
     runtime.root.querySelectorAll('[data-archive-offer]').forEach(function (button) {
       button.addEventListener('click', async function () {
         if (!window.confirm('Archive this offer? It will stop appearing in the new directory.')) return;
-        await mutate('offer.archive', { id: button.getAttribute('data-archive-offer') }, button, 'Offer archived and removed from public display.');
+        await mutate('offer.archive', { id: button.getAttribute('data-archive-offer') }, button, 'Offer archived and removed from this browser’s demo directory.');
       });
     });
     var clear = runtime.root.querySelector('[data-clear-offer]');
@@ -685,7 +685,7 @@
     var draft = normaliseProfile(local || server);
     while (draft.categories.length < 3) draft.categories.push('');
     var restored = !!local;
-    return pageHeader('03 / Profile', 'YOUR MARKET TABLE', 'Build a demo storefront and preview it in your local directory. Other visitors cannot see this browser’s saved profile.', '') +
+    return pageHeader('03 / Profile', 'YOUR MARKET TABLE', 'Build a demo storefront and preview it in your local directory. Your saved profile appears only in this browser’s demo directory.', '') +
       (restored ? '<div class="vapp-draft-notice"><strong>UNFINISHED BROWSER DRAFT RESTORED</strong><span>Save or publish when you are ready.</span><button type="button" data-discard-profile>Discard local draft</button></div>' : '') +
       '<div class="vapp-profile-grid">' +
         '<form class="vapp-editor" id="vapp-profile-form" novalidate data-server-published="' + String(server.published) + '">' +
