@@ -449,7 +449,7 @@
       '<section class="vapp-scoreboard" aria-label="Workspace totals">' +
         metric('01', String(activeReservations.length), 'Requested dates', 'Not booth approvals') +
         metric('02', state.profile.published ? 'ON' : 'OFF', 'Directory profile', state.profile.published ? 'Published in preview' : 'Draft in this browser') +
-        metric('03', String(publishedOffers.length), 'Published offers', 'In your local directory') +
+        metric('03', String(publishedOffers.length), 'Published offers', 'Set to published') +
         metric('04', String(state.promotions.length), 'Saved campaigns', 'Not posted to social media') +
       '</section>' +
       '<div class="vapp-overview-grid">' +
@@ -700,7 +700,7 @@
           '<fieldset class="vapp-fieldset"><legend>Profile photo</legend><div class="vapp-photo-control"><div class="vapp-photo-thumb" data-profile-thumb>' + profilePhoto(draft.photoData, draft.businessName) + '</div><div><label class="vapp-button outline small" for="vapp-profile-photo">Choose raster image</label><input class="vapp-visually-hidden" id="vapp-profile-photo" type="file" accept="image/png,image/jpeg,image/webp"><p>PNG, JPEG, or WebP · 700 KB maximum.</p><button class="vapp-text-button danger" type="button" data-remove-profile-photo' + (draft.photoData ? '' : ' hidden') + '>Remove photo</button></div></div><input type="hidden" name="photoData" value="' + attr(draft.photoData) + '"></fieldset>' +
           '<div class="vapp-form-actions split"><div><button class="vapp-button outline" type="submit" name="intent" value="save">' + (server.published ? 'Save changes' : 'Save draft') + '</button><button class="vapp-button primary" type="submit" name="intent" value="' + (server.published ? 'unpublish' : 'publish') + '">' + (server.published ? 'Unpublish profile' : 'Publish profile') + '</button></div><p>' + (server.published ? 'Visible in this browser’s demo directory.' : 'Currently a draft.') + '</p></div>' +
         '</form>' +
-        '<aside class="vapp-profile-preview-wrap"><div class="vapp-section-bar"><div><span class="vapp-kicker">Immediate preview</span><h2>What shoppers read</h2></div><span data-profile-visibility>' + (server.published ? 'PUBLISHED IN PREVIEW' : 'DRAFT') + '</span></div><div data-profile-preview>' + profilePreview(draft, server.published) + '</div><p class="vapp-fine">This preview uses only what you enter here. No information has been imported from the original vendor account.</p></aside>' +
+        '<aside class="vapp-profile-preview-wrap"><div class="vapp-section-bar"><div><span class="vapp-kicker">Immediate preview</span><h2>What shoppers read</h2></div><span data-profile-visibility>' + (server.published ? 'PUBLISHED IN PREVIEW' : 'DRAFT') + '</span></div><div data-profile-preview>' + profilePreview(draft, server.published) + '</div><p class="vapp-fine">Use sample business information for this demo. Anyone using this browser profile can see its saved work. No information has been imported from the original vendor account.</p></aside>' +
       '</div>';
   }
 

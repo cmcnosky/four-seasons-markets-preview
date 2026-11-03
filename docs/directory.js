@@ -28,6 +28,8 @@
         document.getElementById('directory-state')?.remove();document.getElementById('vendor-results').after(note);
       }
       if(page==='vendor'&&id?.startsWith('profile-')){
+        const localEntry=profiles.find(x=>'profile-'+x.id===id);
+        if(localEntry)document.title=localEntry.profile.businessName+' · Demo · Four Seasons Markets';
         document.getElementById('main').innerHTML=profiles.some(x=>'profile-'+x.id===id)?window.workspaceProfilePage(id):`<section class="page-head wrap"><h1>PROFILE UNAVAILABLE</h1><p>This demo profile is not published in this browser. Demo data is not shared between visitors or devices.</p><a href="#vendors" class="button" style="margin-top:20px">Back to the directory</a></section>`;
       }
       if(page==='market'){
@@ -36,7 +38,9 @@
         if(relevant.length){const el=document.createElement('section');el.id='market-live-offers';el.innerHTML=`<h2>VENDOR OFFERS</h2><p>Demo offers created in this browser. These are not live offers and do not confirm attendance.</p>${relevant.map(o=>`<article class="offer-ticket"><span class="fine">${e(o.business)}</span><h3>${e(o.title)}</h3><p><strong>${e(o.value)}</strong></p><p>${e(o.description)}</p><a class="text-link" href="#vendor/profile-${e(o.profileId)}" style="margin-top:12px">View profile & terms ↗</a></article>`).join('')}`;document.querySelector('.detail-content')?.append(el);}
       }
     }catch{
+      profiles=[];window.workspaceVendors=[];
       if(location.hash!==path)return;
+      if(page==='vendors')filterVendors();
       if(page==='vendor'&&id?.startsWith('profile-'))document.getElementById('main').innerHTML=`<section class="page-head wrap"><h1>COULDN’T LOAD THIS PROFILE</h1><p>Browser storage could not be read. Allow local storage for this site, then reload.</p><a class="button" href="#vendors" style="margin-top:20px">Back to vendors</a></section>`;
       if(page==='vendors'){const el=document.createElement('p');el.className='notice';el.textContent='Workspace profiles are temporarily unavailable. The researched directory remains available below.';document.getElementById('vendor-results')?.before(el);}
     }

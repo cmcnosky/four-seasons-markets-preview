@@ -14,7 +14,7 @@ The public preview is hosted on GitHub Pages. It is an independent design concep
 - Draft, publish, edit, and archive demo offers with market and date restrictions.
 - Save promotional campaigns, copy captions, and download square or story graphics.
 
-All editable vendor data stays in that visitor’s browser. “Publish” displays a profile or offer only in that browser’s local directory. No vendor data is shared with other visitors, synchronized between devices, submitted to market staff, or imported from the original portal. Clearing site data removes saved work. Local storage is not an authenticated account: anyone using the same browser profile can see its saved work. Use sample information for this demo.
+All editable vendor data stays in that visitor’s browser. “Publish” displays a profile or offer only in that browser’s local directory. No vendor data is shared with other visitors, synchronized between devices, submitted to market staff, or imported from the original portal. Clearing site data removes saved work. Local storage is not an authenticated account: anyone using the same browser profile can see its saved work. Use sample information for this demo. Browser storage is shared by project pages on the same `cmcnosky.github.io` origin, so this preview does not provide a separate security boundary from other projects on that origin.
 
 Reservations do not allocate real booths or collect payments. Promotion exports retain a draft / attendance-not-confirmed label. The market dates and public vendor information were researched on November 3, 2026; individual pages link to sources. Dates are a research snapshot, not a live schedule feed. Past occurrences cannot be requested.
 
