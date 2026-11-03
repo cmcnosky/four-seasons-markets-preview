@@ -1,35 +1,31 @@
-# Four Seasons Markets — public design preview
+# Four Seasons Markets — public market guide
 
-A redesigned market guide and integrated vendor workspace.
+Public guide: https://cmcnosky.github.io/four-seasons-markets-preview/
 
-Public preview: https://cmcnosky.github.io/four-seasons-markets-preview/
+Vendor workspace: https://four-seasons-vendor-hub.cmcnosky.chatgpt.site/index.html#workspace
 
-The public preview is hosted on GitHub Pages. It is an independent design concept, not the organizer’s official website or a live booking service.
+The public guide and vendor workspace share the redesigned market experience. This is an independent project, not the organizer’s official reservation or payment system.
 
-## What visitors can try
+## Accounts and publication
 
-- Browse six sourced market listings, filter markets and vendors, open directions, save favorites, and download a calendar event.
-- Plan a reservation request, select a booth size, review a fee estimate, and cancel a demo request.
-- Create and edit a business profile, including a photo and shop links, then preview it in the directory.
-- Draft, publish, edit, and archive demo offers with market and date restrictions.
-- Save promotional campaigns, copy captions, and download square or story graphics.
+The vendor workspace uses ChatGPT sign-in and account-scoped server storage. Saved profiles, offers, reservation plans, and promotions can be loaded from another device after signing in to the same account.
 
-All editable vendor data stays in that visitor’s browser. “Publish” displays a profile or offer only in that browser’s local directory. No vendor data is shared with other visitors, synchronized between devices, submitted to market staff, or imported from the original portal. Clearing site data removes saved work. Local storage is not an authenticated account: anyone using the same browser profile can see its saved work. Use sample information for this demo. Browser storage is shared by project pages on the same `cmcnosky.github.io` origin, so this preview does not provide a separate security boundary from other projects on that origin.
+Vendors explicitly publish their business profiles. Customers can browse those profiles and current published offers without an account. Unpublished profiles, draft/archived offers, reservation notes, and campaign drafts are excluded from the public directory. Vendors can unpublish profiles and archive offers.
 
-Reservations do not allocate real booths or collect payments. Promotion exports retain a draft / attendance-not-confirmed label. The market dates and public vendor information were researched on November 3, 2026; individual pages link to sources. Dates are a research snapshot, not a live schedule feed. Past occurrences cannot be requested.
+The GitHub Pages guide reads the public directory from the account service without credentials. Vendor routes open the same-design workspace on that service’s secure origin. Authentication and writes remain on the app host; no account token or private workspace API is exposed through GitHub Pages.
 
-## Source layout
+The earlier browser-local demo was replaced. It remains available in this repository’s Git history. Its saved local records are not automatically uploaded or published.
 
-- `docs/` contains the published static website and local assets.
-- `src/vendor-state.ts` contains the shared domain schemas and rules.
-- `src/preview-storage.ts` adapts those rules to browser storage.
-- `docs/preview-storage.js` is the generated browser bundle.
-- `tests/` checks persistence, validation, conflicts, storage failures, and directory visibility.
+## Frontend source
 
-Build the storage bundle with `npm ci && npm run build`; run checks with `npm test`. The checked-in `docs/` directory can be served directly by a static web server. GitHub Pages is configured to publish `main:/docs`.
+`docs/` contains the served site and assets. `docs/platform-config.js` contains public service URLs, not secrets. GitHub Pages publishes `main:/docs`; no build is required for this frontend.
 
-The separate database-backed private redesign is maintained independently; this repository contains only the public static preview.
+The account service is a separate Sites/Vinext application with D1 storage, owner checks, versioned writes, and a public directory projection. Its source is maintained separately from this static repository. The original private redesign was not repurposed or exposed.
 
-## Brand and assets
+## Market and operational limits
 
-This concept is not endorsed by Four Seasons Markets. Market photography and vendor imagery are credited by their source context and the site’s About page. These assets retain their respective owners’ rights. Brand and asset permissions, organizer-approved schedules, account migration, inventory, staff approval, payments, moderation, and operational testing would be needed for an official replacement.
+The market dates and researched vendor information were checked on November 3, 2026. The November 7–8 dates are a research snapshot, not a live schedule feed; pages link to their sources. A vendor-created profile is not organizer approval or a confirmed event appearance.
+
+Reservation plans do not allocate real booths, collect payments, or update the original portal. Promotion tools save campaign details and generate graphics and captions; they do not post to social networks.
+
+Market photography and vendor imagery retain their respective owners’ rights. Brand and asset permissions, organizer-approved schedules, inventory, staff approval, payments, and operational acceptance would be needed for an official replacement.
