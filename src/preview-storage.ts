@@ -191,6 +191,57 @@ function pathFrom(url: string | URL) {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function collectionsAreBounded(value: unknown) {
+  if (!isRecord(value) || !isRecord(value.state)) return true;
+  const state = value.state;
+  for (const key of ["reservations", "offers", "promotions"]) {
+    const collection = state[key];
+    if (Array.isArray(collection) && collection.length > 100) return false;
+  }
+  if (
+    isRecord(state.profile) &&
+    Array.isArray(state.profile.categories) &&
+    state.profile.categories.length > 3
+  ) {
+    return false;
+  }
+  if (Array.isArray(state.offers)) {
+    for (const offer of state.offers) {
+      if (
+        isRecord(offer) &&
+        Array.isArray(offer.marketIds) &&
+        offer.marketIds.length > 6
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function patchCollectionsAreBounded(value: unknown) {
+  if (!isRecord(value) || !isRecord(value.payload)) return true;
+  if (
+    value.action === "profile.save" &&
+    Array.isArray(value.payload.categories) &&
+    value.payload.categories.length > 3
+  ) {
+    return false;
+  }
+  if (
+    value.action === "offer.save" &&
+    Array.isArray(value.payload.marketIds) &&
+    value.payload.marketIds.length > 6
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function createPreviewApi(options: PreviewOptions = {}): PreviewApi {
   const getStorage = options.getStorage ?? (() => window.localStorage);
   const now = options.now ?? (() => new Date());
@@ -221,7 +272,14 @@ export function createPreviewApi(options: PreviewOptions = {}): PreviewApi {
     }
     if (raw === null) return null;
     try {
-      return storedSchema.parse(JSON.parse(raw));
+      if (new TextEncoder().encode(raw).length > MAX_PATCH_BODY_BYTES) {
+        throw new Error("Stored workspace is oversized");
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      if (!collectionsAreBounded(parsed)) {
+        throw new Error("Stored workspace collections are oversized");
+      }
+      return storedSchema.parse(parsed);
     } catch {
       throw new LocalStoreError("corrupt");
     }
@@ -277,7 +335,17 @@ export function createPreviewApi(options: PreviewOptions = {}): PreviewApi {
           413,
         );
       }
-      input = parsePatchRequest(JSON.parse(rawBody) as unknown);
+      const parsed = JSON.parse(rawBody) as unknown;
+      if (!patchCollectionsAreBounded(parsed)) {
+        return jsonResponse(
+          {
+            error: "invalid_request",
+            message: "Some fields were not accepted. Review the form and try again.",
+          },
+          400,
+        );
+      }
+      input = parsePatchRequest(parsed);
     } catch (error) {
       if (error instanceof z.ZodError) return validationFailure(error);
       return jsonResponse({ error: "invalid_json" }, 400);
