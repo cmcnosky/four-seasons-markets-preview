@@ -37,7 +37,8 @@
         email: state.user.email,
         displayName: state.user.displayName,
         emailVerified: state.user.emailVerified,
-        userKey: state.user.userKey
+        userKey: state.user.userKey,
+        providers: state.user.providers || []
       } : null
     };
   }
@@ -64,7 +65,8 @@
         email: typeof user.email === 'string' ? user.email : '',
         displayName: typeof user.displayName === 'string' ? user.displayName : '',
         emailVerified: user.emailVerified === true,
-        userKey: typeof user.uid === 'string' ? user.uid : ''
+        userKey: typeof user.uid === 'string' ? user.uid : '',
+        providers: (user.providerData || []).map(function(p){return p.providerId;})
       },
       message: ''
     });
@@ -157,7 +159,8 @@
         var app = appApi.getApps().find(function (candidate) { return candidate.name === appName; }) || appApi.initializeApp(firebaseConfig, appName);
         auth = authApi.getAuth(app);
         auth.useDeviceLanguage();
-        await authApi.setPersistence(auth, authApi.browserSessionPersistence);
+        var remember=false;try{remember=localStorage.getItem('fsm-remember-device')==='yes';}catch(_){}
+        await authApi.setPersistence(auth, remember?authApi.browserLocalPersistence:authApi.browserSessionPersistence);
 
         await new Promise(function (resolve) {
           var first = true;
@@ -292,8 +295,26 @@
     return publicState();
   }
 
+  async function setRememberDevice(remember) {
+    await ensureReady();
+    try { await authApi.setPersistence(auth,remember?authApi.browserLocalPersistence:authApi.browserSessionPersistence);try{localStorage.setItem('fsm-remember-device',remember?'yes':'no');}catch(_){} }
+    catch(error){throw authError(error);}
+  }
+  async function linkGoogle(){await ensureReady();if(!auth.currentUser)throw authError({code:'auth/not-signed-in'});try{return publishUser((await authApi.linkWithPopup(auth.currentUser,new authApi.GoogleAuthProvider())).user);}catch(error){throw authError(error,'That Google account could not be linked.');}}
+  async function changeEmail(email){await ensureReady();if(!auth.currentUser)throw authError({code:'auth/not-signed-in'});try{await authApi.verifyBeforeUpdateEmail(auth.currentUser,String(email||'').trim(),{url:verificationReturnUrl()});return true;}catch(error){throw authError(error,'The email change could not be started.');}}
+  async function changePassword(password){await ensureReady();if(!auth.currentUser)throw authError({code:'auth/not-signed-in'});try{await authApi.updatePassword(auth.currentUser,password);return true;}catch(error){throw authError(error,'The password could not be changed.');}}
+  async function reauthenticate(password){await ensureReady();if(!auth.currentUser)throw authError({code:'auth/not-signed-in'});try{var u=auth.currentUser;if(u.providerData.some(function(p){return p.providerId==='google.com';}))await authApi.reauthenticateWithPopup(u,new authApi.GoogleAuthProvider());else await authApi.reauthenticateWithCredential(u,authApi.EmailAuthProvider.credential(u.email,password));return publishUser(auth.currentUser);}catch(error){throw authError(error,'Identity confirmation failed.');}}
+  var verificationCheck=0;
+  async function checkOnReturn(){if(document.visibilityState!=='visible'||state.phase!=='unverified'||Date.now()-verificationCheck<5000)return;verificationCheck=Date.now();try{await refreshVerification();}catch(_){} }
+  document.addEventListener('visibilitychange',checkOnReturn);window.addEventListener('focus',checkOnReturn);
+
   window.FSMAuth = {
     ready: ready,
+    setRememberDevice:setRememberDevice,
+    linkGoogle:linkGoogle,
+    changeEmail:changeEmail,
+    changePassword:changePassword,
+    reauthenticate:reauthenticate,
     getState: publicState,
     getIdToken: getIdToken,
     signIn: signIn,
