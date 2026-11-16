@@ -421,6 +421,12 @@
 .ops-dialog-body p { margin-top: 16px; font-size: 12px; }
 .ops-dialog-body > div:last-child { display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px; }
 .ops-dialog-body .ops-field { margin-top: 18px; }
+.ops .ops-dialog-error { margin: 16px 0 0; padding: 12px 14px; color: var(--ops-paper); background: var(--ops-tomato-dark); border: 2px solid var(--ops-ink); font-size: 12px; font-weight: 800; }
+.ops-conflict-recovery { display: grid; gap: 10px; margin: 0; padding: 18px 20px; background: #f3dda5; border: 2px solid var(--ops-ink); border-left: 8px solid var(--ops-tomato); }
+.ops-conflict-recovery:focus { outline: 3px solid var(--ops-mustard); outline-offset: 3px; }
+.ops-conflict-recovery h3 { font-size: 28px; }
+.ops-conflict-recovery p { color: var(--ops-ink); font-size: 13px; }
+.ops-conflict-recovery .ops-button { justify-self: start; }
 .ops-auth-gate { min-height: 520px; }
 .ops-auth-gate [data-vendor-app] { min-height: 0; }
 

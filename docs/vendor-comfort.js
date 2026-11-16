@@ -272,7 +272,7 @@
       values[key] = conflict.localData; versions[key] = conflict.cloudVersion || 0; dirty[key] = true;
       persistLocal(accountScope, key, values[key], true); delete conflicts[key]; retryCounts[key] = 0;
     });
-    paint(); dispatchResolution('local'); await Promise.all(conflictKeys.map(flush)); return true;
+    paint(); dispatchResolution('local'); await Promise.all(conflictKeys.map(flush)); return !hasUnsynced();
   }
   async function flushNow() {
     var keys = Object.keys(dirty).filter(function (key) { return !conflicts[key]; });

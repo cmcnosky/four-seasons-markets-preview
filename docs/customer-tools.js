@@ -2,9 +2,11 @@
   'use strict';
 
   const LOCAL_FOLLOWS = 'fsm-customer-follows-v2';
+  const LOCAL_FOLLOW_PENDING = 'fsm-customer-follow-sync-v1';
   const LEGACY_FAVORITES = 'fsm-github-preview-favorites-v1';
   const LOCAL_LANGUAGE = 'fsm-customer-language-v1';
   const LOCAL_SCHEDULE = 'fsm-public-schedule-cache-v1';
+  const pendingFollowMemory = new Map();
   const RESEARCH_CHECKED_AT = '2026-11-03';
   const OFFICIAL_SCHEDULE = 'https://www.fourseasonsmarkets.com/?sct=events';
   const OFFICIAL_CONTACT = 'https://www.fourseasonsmarkets.com/?sct=contact';
@@ -19,6 +21,29 @@
   const write = (key, value) => {
     try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
   };
+  const remove = key => {
+    try { localStorage.removeItem(key); return true; } catch { return false; }
+  };
+  function initialAnonymousFollows() {
+    const scoped = read(`${LOCAL_FOLLOWS}:anonymous`, null);
+    if (Array.isArray(scoped)) return sanitizeSaved(scoped);
+    const legacy = sanitizeSaved(read(LEGACY_FAVORITES, []));
+    let matchesAccountScope = false;
+    try {
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (!key?.startsWith(`${LOCAL_FOLLOWS}:`) || key === `${LOCAL_FOLLOWS}:anonymous`) continue;
+        const accountItems = sanitizeSaved(read(key, []));
+        if (accountItems.length === legacy.length && accountItems.every(item => legacy.includes(item))) {
+          matchesAccountScope = true;
+          break;
+        }
+      }
+    } catch { /* Treat an unreadable storage index as an unscoped legacy list. */ }
+    const anonymous = matchesAccountScope ? [] : legacy;
+    write(`${LOCAL_FOLLOWS}:anonymous`, anonymous);
+    return anonymous;
+  }
 
   const MARKET_GEO = {
     richardson: { lat: 32.9517, lng: -96.7670 },
@@ -83,7 +108,8 @@
     publicLoaded: false,
     publicError: false,
     activeUserKey: 'anonymous',
-    follows: Array.isArray(read(`${LOCAL_FOLLOWS}:anonymous`, read(LEGACY_FAVORITES, []))) ? read(`${LOCAL_FOLLOWS}:anonymous`, read(LEGACY_FAVORITES, [])) : [],
+    follows: initialAnonymousFollows(),
+    followSyncPending: false,
     workspaceVendors: []
   };
   const t = key => TEXT[state.language][key] || TEXT.en[key] || key;
@@ -369,6 +395,21 @@
 
   function isFollowing(key) { return state.follows.includes(key); }
   function followStorageKey(userKey = state.activeUserKey) { return `${LOCAL_FOLLOWS}:${userKey || 'anonymous'}`; }
+  function pendingFollowStorageKey(userKey = state.activeUserKey) { return `${LOCAL_FOLLOW_PENDING}:${userKey || 'anonymous'}`; }
+  function pendingFollowIntents(userKey = state.activeUserKey) {
+    if (pendingFollowMemory.has(userKey)) return { ...pendingFollowMemory.get(userKey) };
+    const value = read(pendingFollowStorageKey(userKey), null);
+    if (!value || value.version !== 1 || !value.intents || typeof value.intents !== 'object' || Array.isArray(value.intents)) return {};
+    return Object.fromEntries(Object.entries(value.intents)
+      .filter(([key, follow]) => sanitizeSaved([key]).length === 1 && cloudFollow(key) && typeof follow === 'boolean')
+      .slice(0, 500));
+  }
+  function writePendingFollowIntents(userKey, intents) {
+    const entries = Object.entries(intents).slice(0, 500);
+    pendingFollowMemory.set(userKey, Object.fromEntries(entries));
+    if (!entries.length) return remove(pendingFollowStorageKey(userKey));
+    return write(pendingFollowStorageKey(userKey), { version: 1, intents: Object.fromEntries(entries) });
+  }
   function cloudFollow(key) {
     const match = String(key || '').match(/^(market|vendor):(.+)$/);
     if (!match) return null;
@@ -387,31 +428,73 @@
     const desired = sanitizeSaved(state.follows).sort();
     if (current.length !== desired.length || current.some((key, index) => key !== desired[index])) savedApi.replace(desired);
   }
-  function savedChanged(items) {
-    state.follows = sanitizeSaved(items);
-    write(followStorageKey(), state.follows);
-    saveFollows(state.activeUserKey);
+  function updateFollowSyncStatus() {
+    const notice = document.querySelector('[data-follow-sync-status]');
+    if (!notice) return;
+    notice.style.display = state.activeUserKey !== 'anonymous' && state.followSyncPending ? '' : 'none';
   }
-  async function saveFollows(expectedUserKey = state.activeUserKey) {
-    write(followStorageKey(), state.follows);
+  function savedChanged(items) {
+    const previous = new Set(state.follows);
+    state.follows = sanitizeSaved(items);
+    const current = new Set(state.follows);
+    const changedKeys = [...new Set([...previous, ...current])].filter(key => previous.has(key) !== current.has(key));
+    saveFollows(state.activeUserKey, changedKeys);
+  }
+  let followSyncTail = Promise.resolve();
+  async function syncFollows(userKey) {
     const auth = window.FSMAuth?.getState?.();
-    const userKey = auth?.phase === 'authenticated' ? auth.user?.userKey : '';
-    if (!userKey || userKey !== expectedUserKey) return;
+    const authenticatedUserKey = auth?.phase === 'authenticated' ? auth.user?.userKey : '';
+    if (!authenticatedUserKey || authenticatedUserKey !== userKey) return;
+    const intentSnapshot = pendingFollowIntents(userKey);
+    if (!Object.keys(intentSnapshot).length) {
+      if (state.activeUserKey === userKey) state.followSyncPending = false;
+      updateFollowSyncStatus();
+      return;
+    }
     try {
-      const followsSnapshot = [...state.follows];
       const token = await window.FSMAuth.getIdToken();
       if (window.FSMAuth?.getState?.().user?.userKey !== userKey) return;
-      const current = new Set(followsSnapshot);
-      const previous = Array.isArray(state.serverFollows) ? state.serverFollows : [];
-      for (const key of [...new Set([...followsSnapshot, ...previous])]) {
+      for (const [key, follow] of Object.entries(intentSnapshot)) {
         if (window.FSMAuth?.getState?.().user?.userKey !== userKey) return;
         const target = cloudFollow(key);
         if (!target) continue;
-        const response = await fetch(api('/api/customer'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: 'follow.set', payload: { kind: target.kind, targetId: target.targetId, follow: current.has(key), reminder: false } }) });
+        const response = await fetch(api('/api/customer'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: 'follow.set', payload: { kind: target.kind, targetId: target.targetId, follow, reminder: false } }) });
         if (!response.ok) throw new Error('follow_sync_failed');
+        const latest = pendingFollowIntents(userKey);
+        if (latest[key] === follow) {
+          delete latest[key];
+          writePendingFollowIntents(userKey, latest);
+        }
+        if (state.activeUserKey === userKey) {
+          const server = new Set(Array.isArray(state.serverFollows) ? state.serverFollows : []);
+          if (follow) server.add(key); else server.delete(key);
+          state.serverFollows = sanitizeSaved([...server]);
+        }
       }
-      if (window.FSMAuth?.getState?.().user?.userKey === userKey) state.serverFollows = followsSnapshot.filter(cloudFollow);
-    } catch { /* Local preference remains available when account sync is unavailable. */ }
+      if (state.activeUserKey === userKey) state.followSyncPending = Object.keys(pendingFollowIntents(userKey)).length > 0;
+      updateFollowSyncStatus();
+    } catch {
+      if (state.activeUserKey === userKey) state.followSyncPending = true;
+      updateFollowSyncStatus();
+      /* Account-scoped per-key intent remains available for a later retry. */
+    }
+  }
+  function saveFollows(expectedUserKey = state.activeUserKey, changedKeys = []) {
+    const userKey = expectedUserKey || 'anonymous';
+    const followsSnapshot = sanitizeSaved(state.follows);
+    write(followStorageKey(userKey), followsSnapshot);
+    if (userKey === 'anonymous') return Promise.resolve();
+    const intents = pendingFollowIntents(userKey);
+    const desired = new Set(followsSnapshot);
+    for (const key of sanitizeSaved(changedKeys)) {
+      if (cloudFollow(key)) intents[key] = desired.has(key);
+    }
+    writePendingFollowIntents(userKey, intents);
+    if (state.activeUserKey === userKey) state.followSyncPending = Object.keys(intents).length > 0;
+    updateFollowSyncStatus();
+    if (!Object.keys(intents).length) return Promise.resolve();
+    followSyncTail = followSyncTail.catch(() => {}).then(() => syncFollows(userKey));
+    return followSyncTail;
   }
   async function loadCustomerPreferences() {
     try {
@@ -424,15 +507,22 @@
       if (!response.ok) return;
       const data = await response.json();
       if (window.FSMAuth?.getState?.().user?.userKey !== userKey) return;
-      const remote = Array.isArray(data.follows) ? data.follows.map(localFollow).filter(Boolean) : [];
+      const remote = sanitizeSaved(Array.isArray(data.follows) ? data.follows.map(localFollow).filter(Boolean) : []);
       state.activeUserKey = userKey;
       state.serverFollows = remote;
-      const scoped = read(followStorageKey(userKey), []);
-      state.follows = [...new Set([...(Array.isArray(scoped) ? scoped : []), ...remote])];
+      const scoped = sanitizeSaved(read(followStorageKey(userKey), []));
+      const intents = pendingFollowIntents(userKey);
+      const browserOnly = scoped.filter(key => !cloudFollow(key));
+      const desiredCloud = new Set(remote);
+      for (const [key, follow] of Object.entries(intents)) {
+        if (follow) desiredCloud.add(key); else desiredCloud.delete(key);
+      }
+      state.follows = mergeSaved(browserOnly, [...desiredCloud]);
+      state.followSyncPending = Object.keys(intents).length > 0;
       write(followStorageKey(userKey), state.follows);
       applyFollowsToSaved();
       if (location.hash.startsWith('#saved')) window.FSMRender?.();
-      if (state.follows.some(key => !remote.includes(key))) saveFollows(userKey);
+      if (state.followSyncPending) saveFollows(userKey);
     } catch { /* Browser-local preferences still work without an account connection. */ }
   }
   function authChanged(authState) {
@@ -440,16 +530,18 @@
     if (!nextKey || nextKey === state.activeUserKey) return;
     state.activeUserKey = nextKey;
     state.serverFollows = [];
-    const scoped = read(followStorageKey(nextKey), []);
-    state.follows = Array.isArray(scoped) ? scoped : [];
+    const scoped = sanitizeSaved(read(followStorageKey(nextKey), []));
+    const intents = nextKey === 'anonymous' ? {} : pendingFollowIntents(nextKey);
+    state.follows = scoped;
+    state.followSyncPending = Object.keys(intents).length > 0;
     applyFollowsToSaved();
     if (nextKey !== 'anonymous') loadCustomerPreferences();
     if (location.hash.startsWith('#saved')) window.FSMRender?.();
   }
   function toggleFollow(key, button) {
-    state.follows = isFollowing(key) ? state.follows.filter(item => item !== key) : [...state.follows, key];
+    state.follows = sanitizeSaved(isFollowing(key) ? state.follows.filter(item => item !== key) : [...state.follows, key]);
     applyFollowsToSaved();
-    saveFollows(state.activeUserKey);
+    saveFollows(state.activeUserKey, [key]);
     if (button) { button.textContent = isFollowing(key) ? t('following') : t('follow'); button.setAttribute('aria-pressed', String(isFollowing(key))); }
   }
 
@@ -506,10 +598,46 @@
       refreshCurrentPage();
     }
   }
+  function homeFinderSnapshot() {
+    const ids = ['market-search', 'market-date', 'market-specific-date', 'market-day', 'market-frequency'];
+    const values = Object.fromEntries(ids.map(id => [id, document.querySelector(`#${id}`)?.value ?? '']));
+    const active = document.activeElement;
+    const activeId = ids.includes(active?.id) ? active.id : '';
+    return {
+      values,
+      activeId,
+      selectionStart: activeId && typeof active.selectionStart === 'number' ? active.selectionStart : null,
+      selectionEnd: activeId && typeof active.selectionEnd === 'number' ? active.selectionEnd : null,
+      scrollX: Number(window.scrollX) || 0,
+      scrollY: Number(window.scrollY) || 0
+    };
+  }
+  function restoreHomeFinder(snapshot) {
+    if (!snapshot) return;
+    for (const [id, value] of Object.entries(snapshot.values)) {
+      const control = document.querySelector(`#${id}`);
+      if (control) control.value = value;
+    }
+    const dateField = document.querySelector('.customer-date-field');
+    if (dateField) dateField.hidden = snapshot.values['market-date'] !== 'pick';
+    const active = snapshot.activeId ? document.querySelector(`#${snapshot.activeId}`) : null;
+    if (active) {
+      active.focus?.({ preventScroll: true });
+      if (snapshot.selectionStart !== null && typeof active.setSelectionRange === 'function') {
+        active.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+      }
+    }
+    window.scrollTo?.(snapshot.scrollX, snapshot.scrollY);
+  }
   function refreshCurrentPage() {
     const raw = location.hash.slice(1).split('?')[0];
     const page = raw === '' || raw === 'main' ? 'home' : raw;
-    if (page === 'home' || page.startsWith('market/')) window.FSMRender?.();
+    if (page === 'home') {
+      const snapshot = homeFinderSnapshot();
+      window.FSMRender?.();
+      restoreHomeFinder(snapshot);
+    }
+    if (page.startsWith('market/')) window.FSMRender?.();
     if (page === 'markets') window.FSMFilterMarkets?.();
   }
 
@@ -519,7 +647,8 @@
     const vendorItems = allVendors.filter(vendor => saved.includes(`vendor:${vendor.id}`));
     const followedMarkets = markets.filter(market => isFollowing(`market:${market.id}`) && !saved.includes(`market:${market.id}`));
     const empty = !marketItems.length && !vendorItems.length && !followedMarkets.length;
-    return `<section class="page-head wrap"><span class="eyebrow">${state.language === 'es' ? 'Sus mercados y negocios' : 'Your markets and makers'}</span><h1>${state.language === 'es' ? 'GUARDADOS Y SEGUIDOS.' : 'SAVED & FOLLOWED.'}</h1><p>${state.language === 'es' ? 'Los guardados funcionan en este navegador. Al iniciar sesión, los mercados y perfiles publicados compatibles se sincronizan entre dispositivos.' : 'Saved items work in this browser. When signed in, supported market and published-vendor follows sync across devices.'}</p></section><section class="wrap" id="customer-saved-content">${empty ? '<div class="empty"><h3>Nothing saved yet.</h3><p>Use the bookmark or follow controls on a market or maker.</p><div class="button-row" style="justify-content:center"><a class="button" href="#markets">Find a market ↗</a><a class="button outline" href="#vendors">Meet the vendors ↗</a></div></div>' : ''}${followedMarkets.length ? `<div class="saved-section"><div class="section-head"><h2>FOLLOWED MARKETS</h2></div><div class="market-grid">${followedMarkets.map(renderMarket).join('')}</div></div>` : ''}${marketItems.length ? `<div class="saved-section"><div class="section-head"><h2>SAVED MARKETS</h2></div><div class="market-grid">${marketItems.map(renderMarket).join('')}</div></div>` : ''}${vendorItems.length ? `<div class="saved-section"><div class="section-head"><h2>SAVED MAKERS</h2></div><div class="vendor-grid">${vendorItems.map(renderVendor).join('')}</div></div>` : ''}<div class="customer-preferences"><h2>UPDATE PREFERENCES</h2><p>Save and follow use one list. Signed-in market favorites and active vendor-published profiles use account sync. Researched vendor listings stay browser-only because they do not have a website account record. Email, text, and push delivery remain off until a supported channel is connected and selected.</p><a class="button outline" href="#account">Account & notification settings ↗</a><details class="customer-portability"><summary>Move or clear browser-saved favorites</summary><p>Copy an export before clearing this browser. Importing merges valid market and vendor keys; it does not overwrite existing favorites.</p><div class="button-row"><button class="button outline small" type="button" data-export-saved>Copy export</button><button class="button outline small" type="button" data-clear-saved>Clear browser saves</button></div><label for="saved-import">Paste a Four Seasons saved-list export</label><textarea id="saved-import" rows="5"></textarea><button class="button outline small" type="button" data-import-saved>Merge import</button><p class="fine" data-saved-portability-status role="status"></p></details></div></section>`;
+    const syncNotice = `<p class="notice" role="status" data-follow-sync-status style="${state.activeUserKey !== 'anonymous' && state.followSyncPending ? '' : 'display:none'}"><strong>Saved on this browser; account sync is still pending.</strong> Keep this browser copy until sync completes.</p>`;
+    return `<section class="page-head wrap"><span class="eyebrow">${state.language === 'es' ? 'Sus mercados y negocios' : 'Your markets and makers'}</span><h1>${state.language === 'es' ? 'GUARDADOS Y SEGUIDOS.' : 'SAVED & FOLLOWED.'}</h1><p>${state.language === 'es' ? 'Los guardados funcionan en este navegador. Al iniciar sesión, los mercados y perfiles publicados compatibles se sincronizan entre dispositivos.' : 'Saved items work in this browser. When signed in, supported market and published-vendor follows sync across devices.'}</p></section><section class="wrap" id="customer-saved-content">${syncNotice}${empty ? '<div class="empty"><h3>Nothing saved yet.</h3><p>Use the bookmark or follow controls on a market or maker.</p><div class="button-row" style="justify-content:center"><a class="button" href="#markets">Find a market ↗</a><a class="button outline" href="#vendors">Meet the vendors ↗</a></div></div>' : ''}${followedMarkets.length ? `<div class="saved-section"><div class="section-head"><h2>FOLLOWED MARKETS</h2></div><div class="market-grid">${followedMarkets.map(renderMarket).join('')}</div></div>` : ''}${marketItems.length ? `<div class="saved-section"><div class="section-head"><h2>SAVED MARKETS</h2></div><div class="market-grid">${marketItems.map(renderMarket).join('')}</div></div>` : ''}${vendorItems.length ? `<div class="saved-section"><div class="section-head"><h2>SAVED MAKERS</h2></div><div class="vendor-grid">${vendorItems.map(renderVendor).join('')}</div></div>` : ''}<div class="customer-preferences"><h2>UPDATE PREFERENCES</h2><p>Save and follow use one list. Signed-in market favorites and active vendor-published profiles use account sync. Researched vendor listings stay browser-only because they do not have a website account record. Email, text, and push delivery remain off until a supported channel is connected and selected.</p><a class="button outline" href="#account">Account & notification settings ↗</a><details class="customer-portability"><summary>Move or clear browser-saved favorites</summary><p>Copy an export before clearing this browser. Importing merges valid market and vendor keys; it does not overwrite existing favorites.</p><div class="button-row"><button class="button outline small" type="button" data-export-saved>Copy export</button><button class="button outline small" type="button" data-clear-saved>Clear browser saves</button></div><label for="saved-import">Paste a Four Seasons saved-list export</label><textarea id="saved-import" rows="5"></textarea><button class="button outline small" type="button" data-import-saved>Merge import</button><p class="fine" data-saved-portability-status role="status"></p></details></div></section>`;
   }
 
   function helpPage(params, partner = false) {
@@ -555,6 +684,25 @@
       button.textContent=TEXT[state.language].language;
       button.setAttribute('aria-label',state.language==='es'?'Switch essential visitor tools to English':'Show essential visitor tools in Spanish');
     });
+  }
+
+  async function copySavedExport(value) {
+    const status = document.querySelector('[data-saved-portability-status]');
+    const input = document.querySelector('#saved-import');
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable');
+      await navigator.clipboard.writeText(value);
+      if (status) status.textContent = 'Export copied.';
+      return true;
+    } catch {
+      if (input) {
+        input.value = value;
+        input.focus?.();
+        input.select?.();
+      }
+      if (status) status.textContent = 'Clipboard unavailable. The export is in the field below; select and copy it.';
+      return false;
+    }
   }
 
   function onPage(page, id, params) {
@@ -610,7 +758,7 @@
       const exportButton = event.target.closest('[data-export-saved]');
       if (exportButton) {
         const value = savedExport(window.FSMSaved?.get?.() || []);
-        navigator.clipboard?.writeText(value).then(()=>{const s=document.querySelector('[data-saved-portability-status]');if(s)s.textContent='Export copied.';}).catch(()=>{const input=document.querySelector('#saved-import');if(input)input.value=value;});
+        copySavedExport(value);
         return;
       }
       const importButton = event.target.closest('[data-import-saved]');
@@ -654,7 +802,7 @@
       sanitizeSaved, mergeSaved, removeSaved, parseSavedImport, savedExport, authChanged,
       cardMarket, timeLabel, scheduleSummary, scheduleCachePayload, readScheduleCache, setScheduleMetadata,
       loadCustomerPreferences, saveFollows, cloudFollow, localFollow, isCurrentDatedOccurrence, currentCentralDate,
-      detailDateHeading
+      detailDateHeading, pendingFollowIntents, copySavedExport, homeFinderSnapshot, restoreHomeFinder, updateFollowSyncStatus
     }
   };
   loadPublicState();

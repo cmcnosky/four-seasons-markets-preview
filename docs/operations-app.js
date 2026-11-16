@@ -23,7 +23,8 @@
     resources: {},
     home: { loading: false, loaded: false, error: '', results: {} },
     repeatPreview: null,
-    resourceRequestId: 0
+    resourceRequestId: 0,
+    dialogSequence: 0
   };
 
   function escapeHTML(value) {
@@ -235,6 +236,7 @@
     state.loading = false;
     state.error = '';
     state.controller = null;
+    state.deferredRender = false;
     state.requestId = Number(state.requestId || 0) + 1;
     return true;
   }
@@ -257,7 +259,7 @@
   function resourceState(resource) {
     if (!runtime.resources[resource]) {
       var params = routeQuery();
-      runtime.resources[resource] = { loaded: false, loading: false, error: '', items: [], summary: {}, pageInfo: {}, occurrence: null, filters: initialResourceFilters(resource, params), cursor: '', previous: [], requestId: 0, controller: null };
+      runtime.resources[resource] = { loaded: false, loading: false, error: '', items: [], summary: {}, pageInfo: {}, occurrence: null, filters: initialResourceFilters(resource, params), cursor: '', previous: [], requestId: 0, controller: null, deferredRender: false };
     }
     return runtime.resources[resource];
   }
@@ -304,6 +306,15 @@
     if (dates.some(function (date) { return !/^\d{4}-\d{2}-\d{2}$/.test(date); })) throw new Error('Use YYYY-MM-DD for every repeat date.');
     if (new Set(dates).size !== dates.length) throw new Error('Remove duplicate repeat dates before previewing.');
     return dates;
+  }
+
+  function validateRepeatDraft(data) {
+    data = data || {};
+    var dates;
+    try { dates = parseRepeatDates(data.dates); }
+    catch (error) { return { valid: false, field: 'dates', message: error.message }; }
+    if (data.endsLocal <= data.startsLocal) return { valid: false, field: 'endsLocal', message: 'End time must be after start time.' };
+    return { valid: true, dates: dates };
   }
 
   function repeatFormDefaults(item, draft) {
@@ -362,6 +373,26 @@
     if (id) id.value = '';
     if (version) version.value = '';
     return setOccurrenceFormMode(form, '');
+  }
+
+  function hasActiveOperationsEditor(root) {
+    return !!(root && root.querySelector('[data-drawer]:not([hidden]), dialog[open]'));
+  }
+
+  function consumeDeferredResourceRender(resources, activeEditor) {
+    if (activeEditor) return false;
+    var pending = false;
+    Object.keys(resources || {}).forEach(function (key) {
+      if (resources[key].deferredRender) {
+        resources[key].deferredRender = false;
+        pending = true;
+      }
+    });
+    return pending;
+  }
+
+  function conflictRecoveryMessage(message) {
+    return text(message, 'The change could not be saved.') + ' Your unsaved values remain on this page and were not submitted. Copy them if needed. Selecting “Review latest record” replaces this unsaved copy.';
   }
 
   function routeHref(section) { return section === 'overview' ? '#operations' : '#operations/' + section; }
@@ -922,6 +953,36 @@
     ensureCurrentResource();
   }
 
+  function flushDeferredResourceRender() {
+    if (consumeDeferredResourceRender(runtime.resources, hasActiveOperationsEditor(runtime.root))) renderCurrent();
+  }
+
+  function closeOperationsDialog(dialog) {
+    var returnFocus = dialog && dialog._opsReturnFocus;
+    try { dialog.close(); } catch {}
+    dialog.remove();
+    if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') returnFocus.focus({ preventScroll: true });
+    Promise.resolve().then(function () {
+      if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') returnFocus.focus({ preventScroll: true });
+    });
+    // Let a chained review dialog open before deciding whether the deferred
+    // resource response can safely replace the page underneath it.
+    setTimeout(flushDeferredResourceRender, 0);
+  }
+
+  function openOperationsDialog(dialog) {
+    dialog._opsReturnFocus = document.activeElement;
+    var heading = dialog.querySelector('h1,h2,h3');
+    if (heading) {
+      if (!heading.id) heading.id = 'ops-dialog-title-' + (++runtime.dialogSequence);
+      dialog.setAttribute('aria-labelledby', heading.id);
+    } else if (!dialog.hasAttribute('aria-label')) {
+      dialog.setAttribute('aria-label', 'Operations dialog');
+    }
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  }
+
   async function request(method, path, body, options) {
     options = options || {};
     var headers = { 'Accept': 'application/json' };
@@ -975,7 +1036,10 @@
     state.error = '';
     var requestId = ++state.requestId;
     state.controller = typeof AbortController === 'function' ? new AbortController() : null;
-    if (options.render !== false) renderCurrent();
+    if (options.render !== false) {
+      if (hasActiveOperationsEditor(runtime.root)) state.deferredRender = true;
+      else { state.deferredRender = false; renderCurrent(); }
+    }
     try {
       var data = await request('GET', API_PATH + '?' + buildResourceQuery(resource, state.filters, state.cursor, options.limit || 50), null, { signal: state.controller && state.controller.signal });
       if (requestId !== state.requestId || !runtime.root) return;
@@ -991,7 +1055,10 @@
     } finally {
       if (requestId === state.requestId) {
         state.loading = false;
-        if (options.render !== false) renderCurrent();
+        if (options.render !== false) {
+          if (hasActiveOperationsEditor(runtime.root)) state.deferredRender = true;
+          else { state.deferredRender = false; renderCurrent(); }
+        }
       }
     }
   }
@@ -1054,6 +1121,7 @@
       state.error = '';
       state.cursor = '';
       state.previous = [];
+      state.deferredRender = false;
       state.requestId += 1;
     });
     runtime.home = { loading: false, loaded: false, error: '', results: {} };
@@ -1076,8 +1144,9 @@
     return data || {};
   }
 
-  async function load() {
-    if (!runtime.root || runtime.loading) return;
+  async function load(options) {
+    var preserveOnError = !!(options && options.preserveOnError === true);
+    if (!runtime.root || runtime.loading) return false;
     runtime.loading = true;
     var requestId = ++runtime.requestId;
     if (runtime.controller) runtime.controller.abort();
@@ -1085,18 +1154,24 @@
     try {
       if (!window.FSMAuth || typeof window.FSMAuth.ready !== 'function') throw new Error('Account sign-in could not load.');
       var auth = await window.FSMAuth.ready();
-      if (requestId !== runtime.requestId || !runtime.root) return;
-      if (auth.phase !== 'authenticated') { renderAuthFallback(); return; }
+      if (requestId !== runtime.requestId || !runtime.root) return false;
+      if (auth.phase !== 'authenticated') { renderAuthFallback(); return false; }
       var data = await request('GET', vendorSection() ? API_PATH + '?view=vendor' : API_PATH, null, { signal: runtime.controller && runtime.controller.signal });
-      if (requestId !== runtime.requestId || !runtime.root) return;
+      if (requestId !== runtime.requestId || !runtime.root) return false;
       runtime.snapshot = normalise(data);
       renderCurrent();
+      return true;
     } catch (error) {
-      if (error.code === 'aborted' || requestId !== runtime.requestId || !runtime.root) return;
-      if (error.status === 401 || error.status === 403 && error.data && error.data.error === 'email_verification_required') { renderAuthFallback(); return; }
+      if (error.code === 'aborted' || requestId !== runtime.requestId || !runtime.root) return false;
+      if (error.status === 401 || error.status === 403 && error.data && error.data.error === 'email_verification_required') { renderAuthFallback(); return false; }
+      if (preserveOnError) {
+        announce((error.message || 'The latest records could not be loaded.') + ' Your unsaved values are still here.', 'error');
+        return false;
+      }
       var content = runtime.root.querySelector('[data-ops-content]');
       if (content) content.innerHTML = errorView(error.message);
       bindCurrent();
+      return false;
     } finally {
       if (requestId === runtime.requestId) runtime.loading = false;
     }
@@ -1179,11 +1254,11 @@
       dialog.className = 'ops-dialog ops-resolution-dialog';
       dialog.innerHTML = '<div class="ops-dialog-head"><span>INTERNAL RESOLUTION</span><strong aria-hidden="true">→</strong></div><form class="ops-dialog-body"><h2>' + escapeHTML(text(item.subject, 'Resolve inquiry')) + '</h2><p>This note stays in the operations record. It does not send an email or message to the person who submitted the inquiry.</p><div class="ops-field"><label for="ops-resolution-note">Internal resolution note</label><textarea id="ops-resolution-note" name="resolution" rows="6" maxlength="1200" required></textarea></div><div class="ops-field"><label for="ops-resolution-status">Status</label><select id="ops-resolution-status" name="status"><option value="in_progress">In progress</option><option value="closed">Closed</option></select></div><div><button class="ops-button outline" type="button" data-cancel>Go back</button><button class="ops-button primary" type="submit">Save internal resolution</button></div></form>';
       runtime.root.appendChild(dialog);
-      function finish(value) { try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      function finish(value) { closeOperationsDialog(dialog); resolve(value); }
       dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish(null); });
       dialog.querySelector('[data-cancel]').addEventListener('click', function () { finish(null); });
       dialog.querySelector('form').addEventListener('submit', function (event) { event.preventDefault(); if (!event.currentTarget.reportValidity()) return; finish(formPayload(event.currentTarget)); });
-      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      openOperationsDialog(dialog);
       dialog.querySelector('textarea').focus();
     });
   }
@@ -1194,13 +1269,49 @@
       dialog.className = 'ops-dialog';
       dialog.innerHTML = '<div class="ops-dialog-head"><span>STAFF ACCESS</span><strong aria-hidden="true">→</strong></div><form class="ops-dialog-body"><h2>' + escapeHTML(text(member.displayName, 'Staff member')) + '</h2><p>Change only the responsibility and market scope this person needs. The access change is written to the activity history.</p><div class="ops-field"><label for="ops-member-role">Role</label><select id="ops-member-role" name="role"><option value="admin"' + selected(member.role,'admin') + '>Administrator</option><option value="operations"' + selected(member.role,'operations') + '>Operations</option><option value="market_manager"' + selected(member.role,'market_manager') + '>Market manager</option><option value="vendor_reviewer"' + selected(member.role,'vendor_reviewer') + '>Vendor reviewer</option><option value="content"' + selected(member.role,'content') + '>Content</option><option value="finance"' + selected(member.role,'finance') + '>Finance</option><option value="check_in"' + selected(member.role,'check_in') + '>Check-in staff</option><option value="readonly"' + selected(member.role,'readonly') + '>Read only</option></select></div><div class="ops-field"><label for="ops-member-markets">Market access</label><input id="ops-member-markets" name="marketScopes" value="' + attr(array(member.marketScopes).join(', ')) + '"></div><div class="ops-field"><label for="ops-member-status">Access status</label><select id="ops-member-status" name="status"><option value="active"' + selected(member.status || 'active','active') + '>Active</option><option value="disabled"' + selected(member.status,'disabled') + '>Disabled</option></select></div><div><button class="ops-button outline" type="button" data-cancel>Go back</button><button class="ops-button primary" type="submit">Save access</button></div></form>';
       runtime.root.appendChild(dialog);
-      function finish(value) { try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      function finish(value) { closeOperationsDialog(dialog); resolve(value); }
       dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish(null); });
       dialog.querySelector('[data-cancel]').addEventListener('click', function () { finish(null); });
       dialog.querySelector('form').addEventListener('submit', function (event) { event.preventDefault(); finish(formPayload(event.currentTarget)); });
-      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      openOperationsDialog(dialog);
       dialog.querySelector('select').focus();
     });
+  }
+
+  function showConflictRecovery(button, message) {
+    if (!runtime.root) return;
+    var target = button && typeof button.closest === 'function' ? button.closest('form') : null;
+    if (!target) target = runtime.root.querySelector('[data-ops-content]');
+    if (!target) return;
+    var existing = target.querySelector('[data-ops-conflict-recovery]');
+    if (existing) existing.remove();
+    var panel = document.createElement('section');
+    panel.className = 'ops-conflict-recovery';
+    panel.dataset.opsConflictRecovery = 'true';
+    panel.setAttribute('role', 'alert');
+    panel.setAttribute('tabindex', '-1');
+    var heading = document.createElement('h3');
+    heading.textContent = 'This change needs review.';
+    var copy = document.createElement('p');
+    copy.textContent = conflictRecoveryMessage(message);
+    var review = document.createElement('button');
+    review.className = 'ops-button outline';
+    review.type = 'button';
+    review.textContent = 'Review latest record';
+    review.addEventListener('click', async function () {
+      review.disabled = true;
+      review.setAttribute('aria-busy', 'true');
+      review.textContent = 'Loading latest…';
+      await load({ preserveOnError: true });
+      if (review.isConnected) {
+        review.disabled = false;
+        review.removeAttribute('aria-busy');
+        review.textContent = 'Review latest record';
+      }
+    });
+    panel.append(heading, copy, review);
+    target.insertBefore(panel, target.firstChild);
+    panel.focus();
   }
 
   async function mutate(action, payload, button, message) {
@@ -1231,7 +1342,13 @@
       announce(message || 'Saved.', 'success');
       return result;
     } catch (error) {
-      if (error.status === 409) await load();
+      if (error.status === 409) {
+        var conflictMessage = conflictRecoveryMessage(error.message);
+        showConflictRecovery(button, error.message);
+        announce(conflictMessage, 'error');
+        setPending(button, false);
+        return null;
+      }
       announce(error.message || 'The change could not be saved.', 'error');
       setPending(button, false);
       return null;
@@ -1260,11 +1377,11 @@
       dialog.innerHTML = '<div class="ops-dialog-head"><span>PLEASE CONFIRM</span><strong aria-hidden="true">!</strong></div><div class="ops-dialog-body"><h2>' + escapeHTML(title) + '</h2><p>' + escapeHTML(body) + '</p><div><button class="ops-button outline" type="button" data-cancel>Go back</button><button class="ops-button ' + (danger ? 'danger' : 'primary') + '" type="button" data-accept>' + escapeHTML(labelText) + '</button></div></div>';
       runtime.root.appendChild(dialog);
       var settled = false;
-      function finish(value) { if (settled) return; settled = true; try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      function finish(value) { if (settled) return; settled = true; closeOperationsDialog(dialog); resolve(value); }
       dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish(false); });
       dialog.querySelector('[data-cancel]').addEventListener('click', function () { finish(false); });
       dialog.querySelector('[data-accept]').addEventListener('click', function () { finish(true); });
-      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      openOperationsDialog(dialog);
       dialog.querySelector('[data-accept]').focus();
     });
   }
@@ -1275,11 +1392,11 @@
       dialog.className = 'ops-dialog';
       dialog.innerHTML = '<div class="ops-dialog-head"><span>REASON REQUIRED</span><strong aria-hidden="true">!</strong></div><form class="ops-dialog-body"><h2>' + escapeHTML(title) + '</h2><p>' + escapeHTML(body) + '</p><div class="ops-field"><label for="ops-required-reason">Reason</label><textarea id="ops-required-reason" name="reason" rows="5" minlength="3" maxlength="1000" required></textarea></div><div><button class="ops-button outline" type="button" data-cancel>Go back</button><button class="ops-button danger" type="submit">' + escapeHTML(labelText) + '</button></div></form>';
       runtime.root.appendChild(dialog);
-      function finish(value) { try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      function finish(value) { closeOperationsDialog(dialog); resolve(value); }
       dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish(''); });
       dialog.querySelector('[data-cancel]').addEventListener('click', function () { finish(''); });
       dialog.querySelector('form').addEventListener('submit', function (event) { event.preventDefault(); if (!event.currentTarget.reportValidity()) return; finish(text(event.currentTarget.elements.reason.value)); });
-      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      openOperationsDialog(dialog);
       dialog.querySelector('textarea').focus();
     });
   }
@@ -1290,22 +1407,27 @@
       var issue = reviewIssue ? '<section class="ops-callout warning" role="alert"><strong>Entries preserved.</strong><p>' + escapeHTML(reviewIssue) + '</p></section>' : '';
       var dialog = document.createElement('dialog');
       dialog.className = 'ops-dialog ops-repeat-dialog';
-      dialog.innerHTML = '<div class="ops-dialog-head"><span>REPEAT DATE · REVIEW FIRST</span><strong aria-hidden="true">＋</strong></div><form class="ops-dialog-body"><h2>' + escapeHTML(occurrenceName(item)) + '</h2><p>Enter each approved date on its own line. The preview checks the source version, exact Central-time conversion, and date conflicts before anything is created.</p>' + issue + '<div class="ops-field"><label for="ops-repeat-dates">New dates <small>1–12, one YYYY-MM-DD per line</small></label><textarea id="ops-repeat-dates" name="dates" rows="7" required placeholder="2026-12-05&#10;2026-12-12">' + escapeHTML(defaults.dates) + '</textarea></div><div class="ops-dialog-grid"><div class="ops-field"><label for="ops-repeat-start">Starts (Central)</label><input id="ops-repeat-start" name="startsLocal" type="time" value="' + attr(defaults.startsLocal) + '" required></div><div class="ops-field"><label for="ops-repeat-end">Ends (Central)</label><input id="ops-repeat-end" name="endsLocal" type="time" value="' + attr(defaults.endsLocal) + '" required></div></div><div class="ops-field"><label for="ops-repeat-source">Verification source</label><input id="ops-repeat-source" name="sourceUrl" type="url" value="' + attr(defaults.sourceUrl) + '" required></div><div class="ops-field"><label for="ops-repeat-checked">Source checked (Central)</label><input id="ops-repeat-checked" name="sourceCheckedAt" type="datetime-local" value="' + attr(defaults.sourceCheckedAt) + '" required></div><section class="ops-callout warning"><strong>No automatic publication or booking.</strong><p>Created records stay private drafts for staff review, with booking requests closed, no deadline, and no copied bookings. Staff must edit each draft and deliberately choose a public status.</p></section><div><button class="ops-button outline" type="button" data-cancel>Close</button><button class="ops-button primary" type="submit">Preview exact dates</button></div></form>';
+      dialog.innerHTML = '<div class="ops-dialog-head"><span>REPEAT DATE · REVIEW FIRST</span><strong aria-hidden="true">＋</strong></div><form class="ops-dialog-body"><h2>' + escapeHTML(occurrenceName(item)) + '</h2><p>Enter each approved date on its own line. The preview checks the source version, exact Central-time conversion, and date conflicts before anything is created.</p>' + issue + '<p class="ops-dialog-error" role="alert" data-repeat-error hidden></p><div class="ops-field"><label for="ops-repeat-dates">New dates <small>1–12, one YYYY-MM-DD per line</small></label><textarea id="ops-repeat-dates" name="dates" rows="7" required placeholder="2026-12-05&#10;2026-12-12">' + escapeHTML(defaults.dates) + '</textarea></div><div class="ops-dialog-grid"><div class="ops-field"><label for="ops-repeat-start">Starts (Central)</label><input id="ops-repeat-start" name="startsLocal" type="time" value="' + attr(defaults.startsLocal) + '" required></div><div class="ops-field"><label for="ops-repeat-end">Ends (Central)</label><input id="ops-repeat-end" name="endsLocal" type="time" value="' + attr(defaults.endsLocal) + '" required></div></div><div class="ops-field"><label for="ops-repeat-source">Verification source</label><input id="ops-repeat-source" name="sourceUrl" type="url" value="' + attr(defaults.sourceUrl) + '" required></div><div class="ops-field"><label for="ops-repeat-checked">Source checked (Central)</label><input id="ops-repeat-checked" name="sourceCheckedAt" type="datetime-local" value="' + attr(defaults.sourceCheckedAt) + '" required></div><section class="ops-callout warning"><strong>No automatic publication or booking.</strong><p>Created records stay private drafts for staff review, with booking requests closed, no deadline, and no copied bookings. Staff must edit each draft and deliberately choose a public status.</p></section><div><button class="ops-button outline" type="button" data-cancel>Close</button><button class="ops-button primary" type="submit">Preview exact dates</button></div></form>';
       runtime.root.appendChild(dialog);
-      function finish(value) { try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      function finish(value) { closeOperationsDialog(dialog); resolve(value); }
       dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish(null); });
       dialog.querySelector('[data-cancel]').addEventListener('click', function () { finish(null); });
       dialog.querySelector('form').addEventListener('submit', function (event) {
         event.preventDefault();
+        var errorRegion = event.currentTarget.querySelector('[data-repeat-error]');
+        errorRegion.hidden = true;
         if (!event.currentTarget.reportValidity()) return;
         var data = formPayload(event.currentTarget);
-        var dates;
-        try { dates = parseRepeatDates(data.dates); }
-        catch (error) { announce(error.message, 'error'); return; }
-        if (data.endsLocal <= data.startsLocal) { announce('End time must be after start time.', 'error'); return; }
-        finish({ sourceId: item.id, sourceVersion: item.version, dates: dates, startsLocal: data.startsLocal, endsLocal: data.endsLocal, sourceUrl: data.sourceUrl, sourceCheckedAt: marketLocalToIso(data.sourceCheckedAt) });
+        var validation = validateRepeatDraft(data);
+        if (!validation.valid) {
+          errorRegion.textContent = validation.message;
+          errorRegion.hidden = false;
+          event.currentTarget.elements.namedItem(validation.field)?.focus();
+          return;
+        }
+        finish({ sourceId: item.id, sourceVersion: item.version, dates: validation.dates, startsLocal: data.startsLocal, endsLocal: data.endsLocal, sourceUrl: data.sourceUrl, sourceCheckedAt: marketLocalToIso(data.sourceCheckedAt) });
       });
-      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      openOperationsDialog(dialog);
       dialog.querySelector('textarea').focus();
     });
   }
@@ -1317,12 +1439,12 @@
       dialog.className = 'ops-dialog ops-repeat-dialog';
       dialog.innerHTML = '<div class="ops-dialog-head"><span>EXACT DATE PREVIEW</span><strong aria-hidden="true">✓</strong></div><div class="ops-dialog-body"><h2>REVIEW ' + records.length + ' PRIVATE DRAFT' + (records.length === 1 ? '' : 'S') + '.</h2><p>Times below are the server-validated timestamps. Conflicts block creation. New drafts are not public, keep booking requests closed, and do not copy vendors, deadlines, or reservations.</p><ol class="ops-repeat-preview">' + records.map(function (record) { return '<li class="' + (record.conflict ? 'has-conflict' : '') + '"><strong>' + escapeHTML(localDate(record.date)) + '</strong><span>' + escapeHTML(localDateTime(record.startsAt)) + ' – ' + escapeHTML(localDateTime(record.endsAt)) + '</span><b>' + escapeHTML(record.conflict ? text(record.conflict, 'Conflict') : 'No conflict found') + '</b></li>'; }).join('') + '</ol><div><button class="ops-button outline" type="button" data-close>Close preview</button><button class="ops-button outline" type="button" data-edit>Edit entered dates</button><button class="ops-button primary" type="button" data-create' + (result.canCreate === true ? '' : ' disabled') + '>Create private drafts</button></div></div>';
       runtime.root.appendChild(dialog);
-      function finish(value) { try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      function finish(value) { closeOperationsDialog(dialog); resolve(value); }
       dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish('close'); });
       dialog.querySelector('[data-close]').addEventListener('click', function () { finish('close'); });
       dialog.querySelector('[data-edit]').addEventListener('click', function () { finish('edit'); });
       dialog.querySelector('[data-create]').addEventListener('click', function () { finish('create'); });
-      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      openOperationsDialog(dialog);
       dialog.querySelector(result.canCreate === true ? '[data-create]' : '[data-edit]').focus();
     });
   }
@@ -1334,10 +1456,10 @@
     dialog.className = 'ops-dialog';
     dialog.innerHTML = '<div class="ops-dialog-head"><span>PRIVATE DRAFTS CREATED</span><strong aria-hidden="true">→</strong></div><div class="ops-dialog-body"><h2>REVIEW EACH DATE BEFORE PUBLICATION.</h2><p>These records are private and bookings remain closed. Open every draft, verify the full venue, access, fee, cutoff, and status details, then deliberately promote it when authorized.</p><ol class="ops-created-drafts">' + ids.map(function (id, index) { return '<li><a href="#operations/calendar?status=draft&amp;q=' + encodeURIComponent(id) + '">Review draft ' + (index + 1) + ' <small>' + escapeHTML(id) + '</small> →</a></li>'; }).join('') + '</ol><button class="ops-button primary" type="button" data-close>Done</button></div>';
     runtime.root.appendChild(dialog);
-    function close() { try { dialog.close(); } catch {} dialog.remove(); }
+    function close() { closeOperationsDialog(dialog); }
     dialog.addEventListener('cancel', function (event) { event.preventDefault(); close(); });
     dialog.querySelector('[data-close]').addEventListener('click', close);
-    if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+    openOperationsDialog(dialog);
     dialog.querySelector('a,button').focus();
   }
 
@@ -1394,11 +1516,11 @@
       dialog.className = 'ops-dialog';
       dialog.innerHTML = '<div class="ops-dialog-head"><span>INTERNAL NOTE</span><strong aria-hidden="true">→</strong></div><form class="ops-dialog-body"><h2>' + escapeHTML(title) + '</h2><p>This note is visible to authorized staff in the operations record. It does not send a reply.</p><div class="ops-field"><label for="ops-internal-note">Note</label><textarea id="ops-internal-note" name="body" rows="6" maxlength="4000" required></textarea></div><div><button class="ops-button outline" type="button" data-cancel>Go back</button><button class="ops-button primary" type="submit">Save internal note</button></div></form>';
       runtime.root.appendChild(dialog);
-      function finish(value) { try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      function finish(value) { closeOperationsDialog(dialog); resolve(value); }
       dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish(''); });
       dialog.querySelector('[data-cancel]').addEventListener('click', function () { finish(''); });
       dialog.querySelector('form').addEventListener('submit', function (event) { event.preventDefault(); if (!event.currentTarget.reportValidity()) return; finish(text(event.currentTarget.elements.body.value)); });
-      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      openOperationsDialog(dialog);
       dialog.querySelector('textarea').focus();
     });
   }
@@ -1409,11 +1531,11 @@
     dialog.className = 'ops-dialog';
     dialog.innerHTML = '<div class="ops-dialog-head"><span>ONE-TIME STAFF TOKEN</span><strong aria-hidden="true">→</strong></div><div class="ops-dialog-body"><h2>COPY IT NOW.</h2><p>This interface does not send an email. Share the token only with the intended teammate through a trusted channel. It expires ' + escapeHTML(localDateTime(result.expiresAt)) + '.</p><div class="ops-field"><label for="ops-created-token">Invitation token</label><textarea id="ops-created-token" rows="4" readonly>' + escapeHTML(result.token) + '</textarea></div><p>Ask the teammate to sign in, open <strong>#operations/invite</strong>, and submit this token. Their request still requires explicit staff approval.</p><div><button class="ops-button outline" type="button" data-copy>Copy token</button><button class="ops-button primary" type="button" data-close>Done</button></div></div>';
     runtime.root.appendChild(dialog);
-    function close() { try { dialog.close(); } catch {} dialog.remove(); }
+    function close() { closeOperationsDialog(dialog); }
     dialog.addEventListener('cancel', function (event) { event.preventDefault(); close(); });
     dialog.querySelector('[data-close]').addEventListener('click', close);
     dialog.querySelector('[data-copy]').addEventListener('click', async function () { var value = result.token; try { await navigator.clipboard.writeText(value); announce('Invitation token copied.', 'success'); } catch { var field = dialog.querySelector('textarea'); field.focus(); field.select(); announce('Select and copy the highlighted token.', 'error'); } });
-    if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+    openOperationsDialog(dialog);
     dialog.querySelector('textarea').focus();
   }
 
@@ -1423,11 +1545,11 @@
       dialog.className = 'ops-dialog';
       dialog.innerHTML = '<div class="ops-dialog-head"><span>OWNER RECOVERY GATE</span><strong aria-hidden="true">!</strong></div><form class="ops-dialog-body"><h2>RESTORE MISSING RECORDS?</h2><p>The server preserves every current row and attempts to return only records missing from snapshot ' + escapeHTML(id) + '. Type <strong>RESTORE MISSING RECORDS</strong> to continue.</p><div class="ops-field"><label for="ops-restore-confirm">Confirmation phrase</label><input id="ops-restore-confirm" name="confirm" autocomplete="off" required pattern="RESTORE MISSING RECORDS"></div><div><button class="ops-button outline" type="button" data-cancel>Go back</button><button class="ops-button danger" type="submit">Run missing-record recovery</button></div></form>';
       runtime.root.appendChild(dialog);
-      function finish(value) { try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      function finish(value) { closeOperationsDialog(dialog); resolve(value); }
       dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish(false); });
       dialog.querySelector('[data-cancel]').addEventListener('click', function () { finish(false); });
       dialog.querySelector('form').addEventListener('submit', function (event) { event.preventDefault(); if (!event.currentTarget.reportValidity()) return; finish(true); });
-      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      openOperationsDialog(dialog);
       dialog.querySelector('input').focus();
     });
   }
@@ -1509,7 +1631,7 @@
       await mutate('booking.transition', { id: record.id, version: record.version, status: status, note: reason, reason: reason }, button, status === 'attended' ? 'Arrival recorded.' : 'No-show recorded.');
     }); });
     runtime.root.querySelectorAll('[data-ops-toggle]').forEach(function (button) { button.addEventListener('click', function () { var drawer = runtime.root.querySelector('[data-drawer="' + CSS.escape(button.dataset.opsToggle) + '"]'); if (drawer) { var focusTarget = ''; if (button.dataset.opsToggle === 'occurrence-form') focusTarget = prepareNewOccurrenceForm(drawer).focus; drawer.hidden = false; drawer.scrollIntoView({ behavior: 'smooth', block: 'start' }); (focusTarget ? drawer.elements.namedItem(focusTarget) : drawer.querySelector('input,select,textarea'))?.focus(); } }); });
-    runtime.root.querySelectorAll('[data-ops-close]').forEach(function (button) { button.addEventListener('click', function () { var drawer = runtime.root.querySelector('[data-drawer="' + CSS.escape(button.dataset.opsClose) + '"]'); if (drawer) drawer.hidden = true; }); });
+    runtime.root.querySelectorAll('[data-ops-close]').forEach(function (button) { button.addEventListener('click', function () { var drawer = runtime.root.querySelector('[data-drawer="' + CSS.escape(button.dataset.opsClose) + '"]'); if (drawer) { drawer.hidden = true; flushDeferredResourceRender(); } }); });
     runtime.root.querySelectorAll('[data-ops-filter]').forEach(function (select) { select.addEventListener('change', function () { var list = runtime.root.querySelector('[data-ops-list="' + CSS.escape(select.dataset.opsFilter) + '"]'); if (!list) return; list.querySelectorAll('[data-filter-status]').forEach(function (item) { item.hidden = !!select.value && item.dataset.filterStatus !== select.value; }); }); });
     runtime.root.querySelectorAll('[data-ops-form]').forEach(function (form) { form.addEventListener('submit', async function (event) {
       event.preventDefault();
@@ -1532,7 +1654,7 @@
       if (action === 'policies.save' && payload.activate && (!payload.approved || !payload.operatorAuthorized)) { announce('Activation requires both policy approval and organizer authority confirmation.', 'error'); return; }
       if (form.dataset.publicOperation === 'true') {
         setPending(event.submitter, true);
-        try { await publicOperation(action, payload); form.reset(); form.hidden = true; announce('Inquiry saved for staff review. No external delivery is claimed.', 'success'); }
+        try { await publicOperation(action, payload); form.reset(); form.hidden = true; flushDeferredResourceRender(); announce('Inquiry saved for staff review. No external delivery is claimed.', 'success'); }
         catch (error) { announce(error.message, 'error'); setPending(event.submitter, false); }
         return;
       }
@@ -1806,6 +1928,7 @@
     csvCell: csvCell,
     rowsToCsv: rowsToCsv,
     parseRepeatDates: parseRepeatDates,
+    validateRepeatDraft: validateRepeatDraft,
     rosterSlot: rosterSlot,
     initialResourceFilters: initialResourceFilters,
     reconcileResourceFilters: reconcileResourceFilters,
@@ -1814,6 +1937,9 @@
     workspaceReturnHref: workspaceReturnHref,
     occurrenceActionState: occurrenceActionState,
     occurrenceFormMode: occurrenceFormMode,
-    prepareNewOccurrenceForm: prepareNewOccurrenceForm
+    prepareNewOccurrenceForm: prepareNewOccurrenceForm,
+    hasActiveOperationsEditor: hasActiveOperationsEditor,
+    consumeDeferredResourceRender: consumeDeferredResourceRender,
+    conflictRecoveryMessage: conflictRecoveryMessage
   });
 })();

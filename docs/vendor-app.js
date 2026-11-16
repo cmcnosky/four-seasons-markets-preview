@@ -47,7 +47,8 @@
     authMode: 'signin',
     authMessage: '',
     authMessageKind: 'success',
-    authListenerBound: false
+    authListenerBound: false,
+    rememberDevice: null
   };
 
   function escapeHTML(value) {
@@ -468,6 +469,20 @@
     return '<div class="vapp-auth-message ' + (runtime.authMessageKind === 'error' ? 'is-error' : 'is-success') + '" role="status" data-auth-message' + (runtime.authMessage ? '' : ' hidden') + '>' + escapeHTML(runtime.authMessage) + '</div>';
   }
 
+  function rememberDevicePreference() {
+    if (typeof runtime.rememberDevice === 'boolean') return runtime.rememberDevice;
+    try { runtime.rememberDevice = window.localStorage.getItem('fsm-remember-device') === 'yes'; }
+    catch (_error) { runtime.rememberDevice = false; }
+    return runtime.rememberDevice;
+  }
+
+  function captureRememberDevicePreference() {
+    if (!runtime.root) return rememberDevicePreference();
+    var input = runtime.root.querySelector('[data-remember-device]');
+    if (input) runtime.rememberDevice = input.checked === true;
+    return rememberDevicePreference();
+  }
+
   function authView(authState) {
     authState = authState || currentAuthState();
     if (authState.phase === 'loading') return loadingView();
@@ -498,7 +513,7 @@
       form = '<form class="vapp-auth-form" data-auth-form="reset" novalidate><div class="vapp-field"><label for="vapp-auth-reset-email">Email address</label><input id="vapp-auth-reset-email" name="email" type="email" autocomplete="email" inputmode="email" required></div><button class="vapp-button primary" type="submit">Send reset email →</button><button class="vapp-text-button" type="button" data-auth-mode="signin">Back to sign in</button></form>';
     } else {
       form = '<div class="vapp-auth-tabs" role="group" aria-label="Choose account action"><button type="button" data-auth-mode="signin" aria-pressed="' + String(!signup) + '">Sign in</button><button type="button" data-auth-mode="signup" aria-pressed="' + String(signup) + '">Create account</button></div>' +
-        '<label class="vapp-remember"><input type="checkbox" data-remember-device> Keep me signed in on this device</label><p class="vapp-fine">Leave unchecked on a shared device.</p>' +
+        '<label class="vapp-remember"><input type="checkbox" data-remember-device' + (rememberDevicePreference() ? ' checked' : '') + '> Keep me signed in on this device</label><p class="vapp-fine">Leave unchecked on a shared device.</p>' +
         '<button class="vapp-google-button" type="button" data-auth-google><svg class="vapp-google-mark" viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path fill="#4285f4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.482h4.844a4.14 4.14 0 0 1-1.797 2.716v2.258h2.909c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34a853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.91-2.258c-.805.54-1.835.859-3.046.859-2.344 0-4.328-1.585-5.037-3.714H.956v2.332A9 9 0 0 0 9 18z"/><path fill="#fbbc05" d="M3.963 10.707A5.42 5.42 0 0 1 3.682 9c0-.592.101-1.167.281-1.707V4.961H.956A9 9 0 0 0 0 9c0 1.452.347 2.827.956 4.039l3.007-2.332z"/><path fill="#ea4335" d="M9 3.579c1.321 0 2.507.454 3.441 1.346l2.581-2.581C13.463.892 11.426 0 9 0A9 9 0 0 0 .956 4.961l3.007 2.332C4.672 5.164 6.656 3.579 9 3.579z"/></svg>Continue with Google</button><div class="vapp-auth-divider"><span>or use email</span></div>' +
         '<form class="vapp-auth-form" data-auth-form="' + (signup ? 'signup' : 'signin') + '" novalidate>' +
           (signup ? '<div class="vapp-field"><label for="vapp-auth-name">Your name</label><input id="vapp-auth-name" name="displayName" maxlength="120" autocomplete="name" required></div>' : '') +
@@ -644,6 +659,7 @@
     if (!runtime.root) return;
     runtime.root.querySelectorAll('[data-auth-mode]').forEach(function (button) {
       button.addEventListener('click', function () {
+        captureRememberDevicePreference();
         runtime.authMode = button.getAttribute('data-auth-mode') || 'signin';
         runtime.authMessage = '';
         renderAuthGate(currentAuthState());
@@ -664,7 +680,8 @@
       setAuthPending(google, true, 'Opening Google…');
       displayAuthMessage('', 'success');
       try {
-        await window.FSMAuth.setRememberDevice(!!runtime.root.querySelector('[data-remember-device]')?.checked);
+        await window.FSMAuth.setRememberDevice(captureRememberDevicePreference());
+        runtime.rememberDevice = null;
         var next = await window.FSMAuth.signInGoogle();
         runtime.authMessage = '';
         if (next.phase === 'authenticated') await loadWorkspace(true);
@@ -698,7 +715,8 @@
           displayAuthMessage('If that email is eligible, a secure password-reset link is on its way.', 'success');
           return;
         }
-        await window.FSMAuth.setRememberDevice(!!runtime.root.querySelector('[data-remember-device]')?.checked);
+        await window.FSMAuth.setRememberDevice(captureRememberDevicePreference());
+        runtime.rememberDevice = null;
         var next = mode === 'signup'
           ? await window.FSMAuth.signUp(email, password, form.elements.displayName.value)
           : await window.FSMAuth.signIn(email, password);
