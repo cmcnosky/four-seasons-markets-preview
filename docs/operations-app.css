@@ -97,6 +97,7 @@
 }
 .ops-rail header p { max-width: 210px; color: rgba(255,249,238,.7); font-size: 11px; }
 .ops-nav { display: grid; }
+.ops .ops-mobile-menu { display: none; }
 .ops-nav-skeleton { padding: 25px; color: rgba(255,249,238,.65); font-size: 11px; }
 .ops-nav-link {
   display: grid;
@@ -144,7 +145,7 @@
 .ops-page-head > .ops-button { flex: 0 0 auto; }
 .ops-page-head h1 { max-width: 980px; margin-top: 8px; color: var(--ops-green); font-size: clamp(54px, 6vw, 94px); overflow-wrap: anywhere; }
 .ops-page-head p { max-width: 760px; margin-top: 14px; font-size: 14px; line-height: 1.65; }
-.ops-button {
+.ops .ops-button {
   display: inline-flex;
   min-height: 46px;
   align-items: center;
@@ -170,7 +171,7 @@
 .ops-button.outline:hover { color: var(--ops-paper); background: var(--ops-green); border-color: var(--ops-green); }
 .ops-button.danger { background: var(--ops-tomato); border-color: var(--ops-tomato-dark); }
 .ops-button:disabled { cursor: progress; opacity: .55; }
-.ops-link {
+.ops .ops-link {
   padding: 3px 0;
   color: var(--ops-green);
   background: none;
@@ -592,7 +593,10 @@
   .ops-rail > header { padding: 14px 16px; }
   .ops-wordmark { font-size: 34px; }
   .ops-rail header p { font-size: 9px; }
+  .ops .ops-mobile-menu { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; color: var(--ops-ink); background: var(--ops-mustard); border: 0; border-bottom: 1px solid var(--ops-ink); font-size: 10px; font-weight: 900; letter-spacing: .04em; text-align: left; text-transform: uppercase; cursor: pointer; }
+  .ops .ops-mobile-menu strong { color: var(--ops-tomato-dark); font-size: 9px; }
   .ops-nav { display: grid; overflow: visible; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ops-nav.is-collapsible:not(.is-open) { display: none; }
   .ops-nav-link { width: 100%; min-width: 0; min-height: 59px; grid-template-columns: 17px 1fr; border-right: 1px solid rgba(255,249,238,.2); }
   .ops-nav-link b { font-size: 17px; }
   .ops-account { padding: 9px 16px; font-size: 8px; }

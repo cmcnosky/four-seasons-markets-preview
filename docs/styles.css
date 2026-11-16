@@ -10,4 +10,8 @@
 .studio-form .check-row input:checked+span{text-decoration:none;color:var(--ink)}
 .field{min-width:0}.field .input-wrap input{padding-left:42px}
 
-@media(max-width:620px){.detail-content .vendor-grid,.detail-content .market-grid{grid-template-columns:1fr!important}}
+@media(max-width:620px){.detail-content .vendor-grid,.detail-content .market-grid{grid-template-columns:1fr!important}#main .details-layout{display:flex;flex-direction:column}#main .details-layout>.detail-panel{order:-1;margin-top:0;width:100%}}
+
+/* Keep small footer navigation comfortably readable against the rendered deep-green theme. */
+.footer-main>div>a:not(.brand),.social-links a,.footer-bottom{color:#fff9ee}
+.footer-intro p{color:#c8d5c6}

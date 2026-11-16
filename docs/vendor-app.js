@@ -3,6 +3,8 @@
 
   var API_PATH = '/api/workspace';
   var SESSION_DRAFT_PREFIX = 'fsm-vendor-session-draft-v1:';
+  var AUTH_RETURN_KEY = 'fsm-auth-return-v1';
+  var AUTH_RETURN_MAX_AGE = 2 * 60 * 60 * 1000;
   var DRAFT_NAMES = ['reservation', 'offer', 'profile', 'promotion'];
   var PHOTO_LIMIT = 700 * 1024;
   var VALID_SECTIONS = ['overview', 'reservations', 'offers', 'profile', 'promotions'];
@@ -261,6 +263,65 @@
     }
   }
 
+  function safeAuthReturnTarget(value) {
+    var target = safeString(value, 600);
+    if (!/^#operations(?:\/[a-z0-9-]+)?(?:\?[a-zA-Z0-9%+_.~=&-]*)?$/.test(target)) return '';
+    return target;
+  }
+
+  function storeAuthReturnTarget(target) {
+    target = safeAuthReturnTarget(target);
+    if (!target) return '';
+    try {
+      window.sessionStorage.setItem(AUTH_RETURN_KEY, JSON.stringify({ target: target, savedAt: Date.now() }));
+    } catch (_error) { /* the current hash still carries the destination */ }
+    return target;
+  }
+
+  function captureAuthReturnTarget() {
+    var hash = String(window.location.hash || '');
+    if (hash.indexOf('#workspace?') === 0) {
+      try {
+        var query = hash.slice(hash.indexOf('?') + 1);
+        return storeAuthReturnTarget(new URLSearchParams(query).get('return') || '');
+      } catch (_error) { return ''; }
+    }
+    if (hash.indexOf('#operations') === 0) return storeAuthReturnTarget(hash);
+    return '';
+  }
+
+  function peekAuthReturnTarget() {
+    try {
+      var record = JSON.parse(window.sessionStorage.getItem(AUTH_RETURN_KEY) || 'null');
+      if (!record || Date.now() - Number(record.savedAt || 0) > AUTH_RETURN_MAX_AGE) {
+        window.sessionStorage.removeItem(AUTH_RETURN_KEY);
+        return '';
+      }
+      var target = safeAuthReturnTarget(record.target);
+      if (!target) window.sessionStorage.removeItem(AUTH_RETURN_KEY);
+      return target;
+    } catch (_error) {
+      try { window.sessionStorage.removeItem(AUTH_RETURN_KEY); } catch (_storageError) { /* no-op */ }
+      return '';
+    }
+  }
+
+  function continueToAuthReturnTarget() {
+    var target = peekAuthReturnTarget();
+    if (!target) return false;
+    try { window.sessionStorage.removeItem(AUTH_RETURN_KEY); } catch (_error) { /* no-op */ }
+    if (String(window.location.hash || '') === target) {
+      if (typeof window.HashChangeEvent === 'function') {
+        window.dispatchEvent(new window.HashChangeEvent('hashchange', { oldURL: window.location.href, newURL: window.location.href }));
+      } else {
+        window.dispatchEvent(new Event('hashchange'));
+      }
+    } else {
+      window.location.hash = target;
+    }
+    return true;
+  }
+
   function draftKey(name) {
     if (!runtime.snapshot || !runtime.draftScope || DRAFT_NAMES.indexOf(name) === -1) return '';
     return SESSION_DRAFT_PREFIX + runtime.draftScope + ':' + name;
@@ -318,8 +379,21 @@
     runtime.loading = false;
   }
 
+  function clearWorkspaceAnnouncement() {
+    if (!runtime.root) return;
+    var region = runtime.root.querySelector('[data-vapp-live]');
+    if (!region) return;
+    window.clearTimeout(region._hideTimer);
+    region._hideTimer = 0;
+    region.className = 'vapp-live';
+    region.textContent = '';
+  }
+
   function concealWorkspace() {
     if (!runtime.root) return;
+    clearWorkspaceAnnouncement();
+    var draftTools = runtime.root.querySelector('.vapp-sync-bar');
+    if (draftTools) draftTools.hidden = true;
     runtime.root.querySelectorAll('.vapp-confirm-dialog').forEach(function (dialog) {
       if (typeof dialog._vappCancel === 'function') dialog._vappCancel();
       else dialog.remove();
@@ -367,7 +441,7 @@
         '</aside>' +
         '<div class="vapp-main" id="vapp-main" tabindex="-1">' +
           '<div class="vapp-live" data-vapp-live role="status" aria-live="polite" aria-atomic="true"></div>' +
-          '<div class="vapp-sync-bar"><span data-sync-status role="status">Draft autosave ready</span><button type="button" data-retry-drafts>Retry sync</button><button type="button" data-download-drafts>Download drafts</button><button type="button" data-use-cloud-drafts hidden>Use cloud copy</button><button type="button" data-keep-local-drafts hidden>Keep this device</button></div>' +
+          '<div class="vapp-sync-bar" hidden><span data-sync-status role="status">Draft autosave ready</span><button type="button" data-retry-drafts>Retry sync</button><button type="button" data-download-drafts>Download drafts</button><button type="button" data-use-cloud-drafts hidden>Use cloud copy</button><button type="button" data-keep-local-drafts hidden>Keep this device</button></div>' +
           '<div data-vapp-content>' + loadingView() + '</div>' +
         '</div>' +
       '</div>' +
@@ -408,12 +482,17 @@
 
     var signup = runtime.authMode === 'signup';
     var reset = runtime.authMode === 'reset';
-    var heading = signup ? 'CREATE YOUR VENDOR ACCOUNT.' : reset ? 'RESET YOUR PASSWORD.' : 'WELCOME BACK TO MARKET DESK.';
+    var operationsReturn = peekAuthReturnTarget();
+    var heading = signup ? (operationsReturn ? 'CREATE YOUR ACCOUNT.' : 'CREATE YOUR VENDOR ACCOUNT.') : reset ? 'RESET YOUR PASSWORD.' : operationsReturn ? 'SIGN IN TO MARKET OPERATIONS.' : 'WELCOME BACK TO MARKET DESK.';
     var intro = signup
-      ? 'Create one account for your saved profile, offers, applications, and bookings across devices.'
+      ? (operationsReturn
+          ? 'Create a normal email account, then return to the requested page. Creating an account does not grant staff access; the owner assigns each staff role.'
+          : 'Create one account for your saved profile, offers, applications, and bookings across devices.')
       : reset
         ? 'Enter the email on your account to request a secure password-reset link.'
-        : 'Sign in to manage your vendor storefront and saved market-day work.';
+        : operationsReturn
+          ? 'Sign in to return to the staff or vendor operations page you requested. Available tools depend on the role assigned to your account.'
+          : 'Sign in to manage your vendor storefront and saved market-day work.';
     var form = '';
     if (reset) {
       form = '<form class="vapp-auth-form" data-auth-form="reset" novalidate><div class="vapp-field"><label for="vapp-auth-reset-email">Email address</label><input id="vapp-auth-reset-email" name="email" type="email" autocomplete="email" inputmode="email" required></div><button class="vapp-button primary" type="submit">Send reset email →</button><button class="vapp-text-button" type="button" data-auth-mode="signin">Back to sign in</button></form>';
@@ -430,7 +509,10 @@
           (!signup ? '<button class="vapp-text-button" type="button" data-auth-mode="reset">Forgot password?</button>' : '') +
         '</form>';
     }
-    return '<section class="vapp-auth-layout"><div class="vapp-auth-poster"><span class="vapp-panel-number">ACCOUNT</span><h1>' + heading + '</h1><p>' + intro + '</p><ul class="vapp-auth-features"><li>Saved workspace records sync across signed-in devices.</li><li>Only the profile and current offers you publish are public.</li><li>Planning requests do not allocate a booth or collect payment.</li></ul></div><div class="vapp-auth-card"><span class="vapp-kicker">One website · one vendor account</span>' + authNotice() + form + '<p class="vapp-auth-privacy">Use the same sign-in on any device to return to your saved work.</p></div></section>';
+    var features = operationsReturn
+      ? '<li>No ChatGPT account is required; use email/password or Google.</li><li>Your assigned role and market scope control which private records open.</li><li>After sign-in, this website returns to the page you requested.</li>'
+      : '<li>Saved workspace records sync across signed-in devices.</li><li>Only the profile and current offers you publish are public.</li><li>Planning requests do not allocate a booth or collect payment.</li>';
+    return '<section class="vapp-auth-layout"><div class="vapp-auth-poster"><span class="vapp-panel-number">ACCOUNT</span><h1>' + heading + '</h1><p>' + intro + '</p><ul class="vapp-auth-features">' + features + '</ul></div><div class="vapp-auth-card"><span class="vapp-kicker">' + (operationsReturn ? 'One website · role-based access' : 'One website · one vendor account') + '</span>' + authNotice() + form + '<p class="vapp-auth-privacy">' + (operationsReturn ? 'After sign-in, this website returns you to the operations page you requested.' : 'Use the same sign-in on any device to return to your saved work.') + '</p></div></section>';
   }
 
   function verificationView(authState) {
@@ -440,6 +522,7 @@
 
   function renderAuthGate(authState) {
     if (!runtime.root) return;
+    clearWorkspaceAnnouncement();
     var content = runtime.root.querySelector('[data-vapp-content]');
     if (content) content.innerHTML = authView(authState);
     updateAccountUI(authState && authState.phase === 'loading' ? 'checking' : 'signed-out');
@@ -601,6 +684,7 @@
       var password = form.elements.password ? form.elements.password.value : '';
       displayAuthMessage('', 'success');
       if (!email) { displayAuthMessage('Enter your email address.', 'error'); form.elements.email.focus(); return; }
+      if (form.elements.email.validity && !form.elements.email.validity.valid) { displayAuthMessage('Enter a valid email address.', 'error'); form.elements.email.focus(); return; }
       if (mode !== 'reset' && !password) { displayAuthMessage('Enter your password.', 'error'); form.elements.password.focus(); return; }
       if (mode === 'signup' && !form.elements.displayName.value.trim()) { displayAuthMessage('Enter your name.', 'error'); form.elements.displayName.focus(); return; }
       if (mode === 'signup' && password.length < 8) { displayAuthMessage('Choose a password with at least eight characters.', 'error'); form.elements.password.focus(); return; }
@@ -804,6 +888,7 @@
         renderAuthGate(authState);
         return;
       }
+      if (continueToAuthReturnTarget()) return;
       var payload = await apiRequest('GET', null, { signal: controller ? controller.signal : undefined });
       if (epoch !== runtime.authEpoch || requestId !== runtime.requestId || !runtime.root) return;
       var snapshot = adoptSnapshot(payload);
@@ -813,6 +898,8 @@
       }
       await window.FSMComfort?.load(snapshot.account.draftScope);
       if (epoch !== runtime.authEpoch || requestId !== runtime.requestId || !runtime.root) return;
+      var draftTools = runtime.root.querySelector('.vapp-sync-bar');
+      if (draftTools) draftTools.hidden = false;
       renderCurrentSection();
       window.FSMComfort?.paint();
     } catch (error) {
@@ -1189,6 +1276,10 @@
       if (intent === 'published') {
         if (!offer.description || !offer.startDate || !offer.endDate || !offer.marketIds.length) {
           announce('Publishing needs shopper details, a start and end date, and at least one associated market.', 'error');
+          if (!offer.description) form.elements.description.focus();
+          else if (!offer.startDate) form.elements.startDate.focus();
+          else if (!offer.endDate) form.elements.endDate.focus();
+          else form.querySelector('[name="marketIds"]').focus();
           return;
         }
         var publishMessage = runtime.snapshot.profile.published
@@ -1234,9 +1325,15 @@
       });
     });
     var clear = runtime.root.querySelector('[data-clear-offer]');
-    if (clear) clear.addEventListener('click', function () { clearDraft('offer'); renderCurrentSection(); });
+    if (clear) clear.addEventListener('click', async function () {
+      if (readDraft('offer') && !await confirmAction('Clear this unfinished offer?', 'The fields in the editor will be cleared. Any offer already saved to your account will remain unchanged.', 'Clear editor', true)) return;
+      clearDraft('offer'); renderCurrentSection();
+    });
     var fresh = runtime.root.querySelector('[data-new-offer]');
-    if (fresh) fresh.addEventListener('click', function () { clearDraft('offer'); renderCurrentSection(); runtime.root.querySelector('#vapp-offer-title').focus(); });
+    if (fresh) fresh.addEventListener('click', async function () {
+      if (readDraft('offer') && !await confirmAction('Start a new offer?', 'The unfinished fields in the editor will be cleared. Saved offers will remain on the offer shelf.', 'Start new offer', true)) return;
+      clearDraft('offer'); renderCurrentSection(); runtime.root.querySelector('#vapp-offer-title').focus();
+    });
   }
 
   function profileView() {
@@ -1258,7 +1355,7 @@
           '<fieldset class="vapp-fieldset"><legend>Website and social</legend><div class="vapp-two-fields">' +
             socialField('website', 'Website', draft.website, 'https://yourbusiness.com') + socialField('instagram', 'Instagram', draft.instagram, 'https://instagram.com/yourbusiness') +
           '</div></fieldset>' +
-          '<fieldset class="vapp-fieldset"><legend>Profile photo</legend><div class="vapp-photo-control"><div class="vapp-photo-thumb" data-profile-thumb>' + profilePhoto(draft.photoData, draft.businessName) + '</div><div><label class="vapp-button outline small" for="vapp-profile-photo">Choose raster image</label><input class="vapp-visually-hidden" id="vapp-profile-photo" type="file" accept="image/png,image/jpeg,image/webp"><p>PNG, JPEG, or WebP · up to 25 MB. We resize it automatically.</p><button class="vapp-text-button danger" type="button" data-remove-profile-photo' + (draft.photoData ? '' : ' hidden') + '>Remove photo</button></div></div><input type="hidden" name="photoData" value="' + attr(draft.photoData) + '"></fieldset>' +
+          '<fieldset class="vapp-fieldset"><legend>Profile photo</legend><div class="vapp-photo-control"><div class="vapp-photo-thumb" data-profile-thumb>' + profilePhoto(draft.photoData, draft.businessName) + '</div><div><label class="vapp-button outline small" for="vapp-profile-photo">Choose a profile photo</label><input class="vapp-visually-hidden" id="vapp-profile-photo" type="file" accept="image/png,image/jpeg,image/webp"><p>PNG, JPEG, or WebP · up to 25 MB. We resize it automatically.</p><button class="vapp-text-button danger" type="button" data-remove-profile-photo' + (draft.photoData ? '' : ' hidden') + '>Remove photo</button></div></div><input type="hidden" name="photoData" value="' + attr(draft.photoData) + '"></fieldset>' +
           '<div class="vapp-form-actions split"><div><button class="vapp-button outline" type="submit" name="intent" value="save">' + (server.published ? 'Save public changes' : 'Save private profile') + '</button><button class="vapp-button primary" type="submit" name="intent" value="' + (server.published ? 'unpublish' : 'publish') + '">' + (server.published ? 'Unpublish profile' : 'Publish profile') + '</button></div><p>' + (server.published ? 'Public now · saved changes update what customers see.' : 'Account only · not visible to customers.') + '</p></div>' +
         '</form>' +
         '<aside class="vapp-profile-preview-wrap"><div class="vapp-section-bar"><div><span class="vapp-kicker">Immediate preview</span><h2>What customers read</h2></div><span data-profile-visibility>' + (server.published ? (restored ? 'UNSAVED CHANGES · NOT LIVE' : 'PUBLIC NOW') : 'NOT PUBLIC') + '</span></div><div data-profile-preview>' + profilePreview(draft, server.published, restored) + '</div><p class="vapp-fine">This card uses only what you enter here. No information has been imported from the original vendor account.</p></aside>' +
@@ -1335,6 +1432,7 @@
       }
       if (willBePublished && (!profile.shortDescription || !profile.categories.filter(Boolean).length)) {
         announce('A public profile needs a short description and at least one product category.', 'error');
+        (profile.shortDescription ? form.elements.category0 : form.elements.shortDescription).focus();
         return;
       }
       var categoryKeys = profile.categories.map(function (item) { return item.toLocaleLowerCase(); });
@@ -1368,7 +1466,7 @@
       if (!file) return;
       if (['image/png', 'image/jpeg', 'image/webp'].indexOf(file.type) === -1) {
         photoInput.value = '';
-        announce('Choose a PNG, JPEG, or WebP raster image.', 'error');
+        announce('Choose a PNG, JPEG, or WebP image file.', 'error');
         return;
       }
       try {
@@ -1391,7 +1489,10 @@
       capture();
     });
     var discard = runtime.root.querySelector('[data-discard-profile]');
-    if (discard) discard.addEventListener('click', function () { clearDraft('profile'); renderCurrentSection(); });
+    if (discard) discard.addEventListener('click', async function () {
+      if (!await confirmAction('Discard this unfinished profile edit?', 'The editor will return to the last profile saved to your account.', 'Discard edit', true)) return;
+      clearDraft('profile'); renderCurrentSection();
+    });
   }
 
   function blankPromotion() {
@@ -1502,6 +1603,7 @@
       }
       if (!promotion.title || !promotion.headline || !promotion.caption) {
         announce('Add an internal name, graphic headline, and caption before saving.', 'error');
+        (promotion.title ? (promotion.headline ? form.elements.caption : form.elements.headline) : form.elements.title).focus();
         return;
       }
       var featuredOffer = runtime.snapshot.offers.find(function (item) { return item.id === promotion.offerId; });
@@ -1576,7 +1678,10 @@
       }
     });
     var clear = form.querySelector('[data-clear-promotion]');
-    clear.addEventListener('click', function () { clearDraft('promotion'); renderCurrentSection(); });
+    clear.addEventListener('click', async function () {
+      if (readDraft('promotion') && !await confirmAction('Clear this unfinished campaign?', 'The fields in the composer will be cleared. Saved campaigns will remain on the campaign shelf.', 'Clear composer', true)) return;
+      clearDraft('promotion'); renderCurrentSection();
+    });
     runtime.root.querySelectorAll('[data-edit-promotion]').forEach(function (button) {
       button.addEventListener('click', function () {
         var promotion = runtime.snapshot.promotions.find(function (item) { return item.id === button.getAttribute('data-edit-promotion'); });
@@ -1807,6 +1912,7 @@
     runtime.section = section === 'plans' ? 'reservations' : VALID_SECTIONS.indexOf(section) > -1 ? section : 'overview';
     runtime.root = document.querySelector('[data-vendor-app]');
     if (!runtime.root) return;
+    captureAuthReturnTarget();
     bindAuthStateListener();
     bindDraftSafetyActions();
     await loadWorkspace(true);

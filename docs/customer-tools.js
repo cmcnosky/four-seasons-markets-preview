@@ -231,6 +231,18 @@
     const status = occurrenceStatus(occurrence);
     return { occurrence, status };
   }
+  function marketEmptyCopy(criteria = {}) {
+    const hasDateSelection = Boolean(criteria.dateFilter && (criteria.dateFilter !== 'pick' || criteria.specificDate));
+    if (hasDateSelection) return state.language === 'es'
+      ? { heading: 'No hay fechas actuales que coincidan.', detail: 'Pruebe otra fecha o quite un filtro.' }
+      : { heading: 'No current market dates match your selection.', detail: 'Try another date or clear a filter.' };
+    if (String(criteria.query || '').trim() || criteria.day) return state.language === 'es'
+      ? { heading: 'Ningún mercado coincide con esos filtros.', detail: 'Pruebe otra ciudad, código postal o día.' }
+      : { heading: 'No market venues match those filters.', detail: 'Try another city, ZIP code, or day.' };
+    return state.language === 'es'
+      ? { heading: 'Todavía no hay mercados disponibles.', detail: 'Consulte el calendario oficial para ver las novedades.' }
+      : { heading: 'No market venues are available yet.', detail: 'Check the official schedule for updates.' };
+  }
   function selectMarketItems(markets, criteria) {
     const query = String(criteria.query || '').trim().toLowerCase();
     const place = normalizedPlace(query);
@@ -272,7 +284,8 @@
       if (market.approximateMiles === null) return rendered;
       return rendered.replace('<div class="card-foot">', `<p class="customer-distance">≈ ${market.approximateMiles.toFixed(1)} miles straight-line</p><div class="card-foot">`);
     }).join('');
-    const empty = `<div class="empty" style="grid-column:1/-1"><h3>${state.language === 'es' ? 'No hay mercados para esa fecha.' : 'No published markets match that date.'}</h3><p>${state.language === 'es' ? 'Pruebe otra fecha o quite un filtro.' : 'Try another date or clear the filters.'}</p><button class="button outline" data-reset="markets">${state.language === 'es' ? 'Quitar filtros' : 'Clear filters'}</button></div>`;
+    const emptyCopy = marketEmptyCopy({ query, day, dateFilter, specificDate: specificControl?.value });
+    const empty = `<div class="empty" style="grid-column:1/-1"><h3>${escapeHtml(emptyCopy.heading)}</h3><p>${escapeHtml(emptyCopy.detail)}</p><button class="button outline" data-reset="markets">${state.language === 'es' ? 'Quitar filtros' : 'Clear filters'}</button></div>`;
     result.classList.remove('customer-area-view');
     result.innerHTML = `${explanation}${items.length && state.view === 'map' ? areaMap(items, place) : ''}${items.length ? cards : empty}`;
     document.querySelectorAll('[data-market-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.marketView === state.view)));
@@ -340,7 +353,8 @@
     const cancelledGuidance = occurrence && String(occurrence.status).toLowerCase() === 'cancelled'
       ? `<p><strong>${state.language === 'es' ? 'Esta fecha está cancelada. Consulte el calendario oficial para el próximo evento.' : 'This date is cancelled. Check the official schedule for the next event.'}</strong></p>`
       : '';
-    return `<section class="customer-live-status ${status.className}${state.scheduleCached ? ' is-cached' : ''}" id="customer-live-status" aria-live="polite"><div><span class="eyebrow">${statusHeading}</span><strong>${escapeHtml(statusLabel)}</strong>${staleWarning}${cancelledGuidance}<p>${escapeHtml(details || (occurrenceCheckedAt ? occurrenceFreshness : scheduleSummary()))}</p>${lineupText}</div><div class="customer-status-actions"><button class="button outline small" type="button" data-follow="market:${escapeHtml(market.id)}">${isFollowing(`market:${market.id}`) ? t('following') : t('follow')}</button>${calendarLink}<a class="button outline small" href="${OFFICIAL_SCHEDULE}" target="_blank" rel="noopener">${state.language === 'es' ? 'Fuente oficial' : 'Official schedule'} ↗</a></div></section>`;
+    const following = isFollowing(`market:${market.id}`);
+    return `<section class="customer-live-status ${status.className}${state.scheduleCached ? ' is-cached' : ''}" id="customer-live-status" aria-live="polite"><div><span class="eyebrow">${statusHeading}</span><strong>${escapeHtml(statusLabel)}</strong>${staleWarning}${cancelledGuidance}<p>${escapeHtml(details || (occurrenceCheckedAt ? occurrenceFreshness : scheduleSummary()))}</p>${lineupText}</div><div class="customer-status-actions"><button class="button outline small" type="button" data-follow="market:${escapeHtml(market.id)}" aria-pressed="${following}">${following ? t('following') : t('follow')}</button>${calendarLink}<a class="button outline small" href="${OFFICIAL_SCHEDULE}" target="_blank" rel="noopener">${state.language === 'es' ? 'Fuente oficial' : 'Official schedule'} ↗</a></div></section>`;
   }
   function essentials(market, preferredId = '') {
     const occurrence = occurrenceFor(market.id, preferredId);
@@ -494,7 +508,6 @@
   }
   function refreshCurrentPage() {
     const raw = location.hash.slice(1).split('?')[0];
-    if (raw === 'main') history.replaceState(null, '', '#home');
     const page = raw === '' || raw === 'main' ? 'home' : raw;
     if (page === 'home' || page.startsWith('market/')) window.FSMRender?.();
     if (page === 'markets') window.FSMFilterMarkets?.();
@@ -637,7 +650,7 @@
     saveChanged: savedChanged,
     schedulePanel, occurrenceFor, loadPublicState,
     _test: {
-      normalizedPlace, milesBetween, weekendDates, occurrenceStatus, marketWithDistance, selectMarketItems,
+      normalizedPlace, milesBetween, weekendDates, occurrenceStatus, marketWithDistance, selectMarketItems, marketEmptyCopy,
       sanitizeSaved, mergeSaved, removeSaved, parseSavedImport, savedExport, authChanged,
       cardMarket, timeLabel, scheduleSummary, scheduleCachePayload, readScheduleCache, setScheduleMetadata,
       loadCustomerPreferences, saveFollows, cloudFollow, localFollow, isCurrentDatedOccurrence, currentCentralDate,

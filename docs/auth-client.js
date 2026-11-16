@@ -78,7 +78,14 @@
       : window.location.href;
     var url = new URL(base, window.location.href);
     url.search = '';
-    url.hash = 'workspace';
+    var returnTarget = '';
+    try {
+      var record = JSON.parse(window.sessionStorage.getItem('fsm-auth-return-v1') || 'null');
+      var candidate = record && typeof record.target === 'string' ? record.target.trim().slice(0, 600) : '';
+      var fresh = record && Date.now() - Number(record.savedAt || 0) <= 2 * 60 * 60 * 1000;
+      if (fresh && /^#operations(?:\/[a-z0-9-]+)?(?:\?[a-zA-Z0-9%+_.~=&-]*)?$/.test(candidate)) returnTarget = candidate;
+    } catch (_error) { /* default to the vendor workspace */ }
+    url.hash = returnTarget ? 'workspace?return=' + encodeURIComponent(returnTarget) : 'workspace';
     return url.href;
   }
 
