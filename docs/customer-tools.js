@@ -494,8 +494,10 @@
   }
   function refreshCurrentPage() {
     const raw = location.hash.slice(1).split('?')[0];
-    if (raw === 'home' || raw.startsWith('market/')) window.FSMRender?.();
-    if (raw === 'markets') window.FSMFilterMarkets?.();
+    if (raw === 'main') history.replaceState(null, '', '#home');
+    const page = raw === '' || raw === 'main' ? 'home' : raw;
+    if (page === 'home' || page.startsWith('market/')) window.FSMRender?.();
+    if (page === 'markets') window.FSMFilterMarkets?.();
   }
 
   function savedPage(saved, markets, vendors, renderMarket, renderVendor) {
