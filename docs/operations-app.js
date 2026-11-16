@@ -2,8 +2,8 @@
   'use strict';
 
   var API_PATH = '/api/operations';
-  var VALID_SECTIONS = ['overview', 'calendar', 'applications', 'bookings', 'staff', 'policies', 'notifications', 'moderation', 'support', 'data', 'apply', 'my-bookings', 'visits', 'invite'];
-  var STAFF_SECTIONS = ['overview', 'calendar', 'applications', 'bookings', 'staff', 'policies', 'notifications', 'moderation', 'support', 'data', 'invite'];
+  var VALID_SECTIONS = ['overview', 'calendar', 'applications', 'bookings', 'roster', 'staff', 'policies', 'notifications', 'moderation', 'support', 'data', 'apply', 'my-bookings', 'visits', 'invite'];
+  var STAFF_SECTIONS = ['overview', 'calendar', 'applications', 'bookings', 'roster', 'staff', 'policies', 'notifications', 'moderation', 'support', 'data', 'invite'];
   var VENDOR_SECTIONS = ['overview', 'apply', 'my-bookings', 'visits', 'notifications', 'support', 'invite'];
   var runtime = {
     root: null,
@@ -19,7 +19,11 @@
     authUserKey: '',
     staffAccessSeen: false,
     latestBackup: null,
-    backupPreview: null
+    backupPreview: null,
+    resources: {},
+    home: { loading: false, loaded: false, error: '', results: {} },
+    repeatPreview: null,
+    resourceRequestId: 0
   };
 
   function escapeHTML(value) {
@@ -172,6 +176,88 @@
     };
   }
 
+  function routeQuery() {
+    var hash = String(window.location.hash || '');
+    var query = hash.indexOf('?') >= 0 ? hash.slice(hash.indexOf('?') + 1) : '';
+    return new URLSearchParams(query);
+  }
+
+  function cleanFilters(source) {
+    source = source || {};
+    var clean = {};
+    ['status', 'marketId', 'occurrenceId', 'q', 'dateFrom', 'dateTo'].forEach(function (key) {
+      var value = text(source[key]);
+      if (value) clean[key] = key === 'q' ? value.slice(0, 80) : value;
+    });
+    return clean;
+  }
+
+  function buildResourceQuery(resource, filters, cursor, limit) {
+    var params = new URLSearchParams();
+    params.set('resource', resource);
+    params.set('limit', String(Math.max(1, Math.min(100, Number(limit) || 50))));
+    var safe = cleanFilters(filters);
+    Object.keys(safe).forEach(function (key) { params.set(key, safe[key]); });
+    if (cursor) params.set('cursor', cursor);
+    return params.toString();
+  }
+
+  function resourceState(resource) {
+    if (!runtime.resources[resource]) {
+      var params = routeQuery();
+      var filters = {};
+      ['status', 'marketId', 'occurrenceId', 'q', 'dateFrom', 'dateTo'].forEach(function (key) {
+        if (params.get(key)) filters[key] = params.get(key);
+      });
+      runtime.resources[resource] = { loaded: false, loading: false, error: '', items: [], summary: {}, pageInfo: {}, occurrence: null, filters: cleanFilters(filters), cursor: '', previous: [], requestId: 0, controller: null };
+    }
+    return runtime.resources[resource];
+  }
+
+  function normaliseResourceItems(resource, items) {
+    if (resource === 'applications') return normalise({ applications: items }).applications;
+    if (resource === 'notifications') return normalise({ notifications: items }).notifications;
+    return array(items);
+  }
+
+  function resourceItems(resource, fallback) {
+    var state = runtime.resources[resource];
+    return state && state.loaded ? state.items : array(fallback);
+  }
+
+  function resourceTotal(resource, fallback) {
+    var state = runtime.resources[resource];
+    return state && state.loaded && Number.isInteger(state.pageInfo.total) ? state.pageInfo.total : array(fallback).length;
+  }
+
+  function currentChicagoDate() {
+    var parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    var map = {}; parts.forEach(function (part) { map[part.type] = part.value; });
+    return map.year + '-' + map.month + '-' + map.day;
+  }
+
+  function upcomingOccurrences(items, today) {
+    today = today || currentChicagoDate();
+    return array(items).filter(function (item) {
+      var date = String(occurrenceDate(item) || '').slice(0, 10);
+      return date >= today && ['published_listing', 'scheduled', 'delayed'].indexOf(item.status || 'published_listing') >= 0;
+    }).sort(sortDate);
+  }
+
+  function csvCell(value) {
+    var cell = String(value == null ? '' : value);
+    if (/^[=+\-@]/.test(cell.trimStart())) cell = "'" + cell;
+    return '"' + cell.replace(/"/g, '""') + '"';
+  }
+
+  function parseRepeatDates(value) {
+    var dates = text(value).split(/[\n,]+/).map(function (date) { return date.trim(); }).filter(Boolean);
+    if (!dates.length || dates.length > 12) throw new Error('Enter between 1 and 12 dates.');
+    if (dates.some(function (date) { return !/^\d{4}-\d{2}-\d{2}$/.test(date); })) throw new Error('Use YYYY-MM-DD for every repeat date.');
+    if (new Set(dates).size !== dates.length) throw new Error('Remove duplicate repeat dates before previewing.');
+    return dates;
+  }
+
   function routeHref(section) { return section === 'overview' ? '#operations' : '#operations/' + section; }
 
   function navItem(section, number, title, note) {
@@ -181,10 +267,12 @@
   }
 
   function staffNav() {
-    return navItem('overview', '00', 'Control board', 'Today at a glance') +
+    var checkInOnly = runtime.snapshot.viewer.role === 'check_in';
+    return navItem('overview', '00', 'Daily desk', 'What needs a person') +
       navItem('calendar', '01', 'Markets', 'Dates, status, capacity') +
-      navItem('applications', '02', 'Applications', 'Review the queue') +
-      navItem('bookings', '03', 'Bookings', 'Place every vendor') +
+      (!checkInOnly ? navItem('applications', '02', 'Applications', 'Review the queue') : '') +
+      (!checkInOnly ? navItem('bookings', '03', 'Bookings', 'Place every vendor') : '') +
+      (can('checkin.manage') ? navItem('roster', 'DAY', 'Market day', 'Arrival and no-show') : '') +
       (can('staff.manage') ? navItem('staff', '04', 'Team', 'Roles and market access') : '') +
       navItem('notifications', '05', 'Notices', 'Delivery and replies') +
       (can('moderation.manage') ? navItem('moderation', '06', 'Moderation', 'Public content review') : '') +
@@ -205,6 +293,8 @@
 
   function renderOperationsApp(section) {
     runtime.section = VALID_SECTIONS.indexOf(section) >= 0 ? section : 'overview';
+    runtime.resources = {};
+    runtime.repeatPreview = null;
     return '<section class="ops" data-operations-app>' +
       '<div class="ops-ribbon"><strong>ONE OPERATING RECORD</strong><span>Dates · decisions · vendors · public updates</span></div>' +
       '<div class="ops-layout">' +
@@ -250,26 +340,61 @@
     return array(list).filter(function (item) { return statuses.indexOf(item.status) >= 0; }).length;
   }
 
+  function summaryCount(name, fallback) {
+    var value = runtime.snapshot && runtime.snapshot.summary && Number(runtime.snapshot.summary[name]);
+    return Number.isFinite(value) && value >= 0 ? value : Number(fallback) || 0;
+  }
+
+  function homeQueueItems() {
+    var results = runtime.home.results || {};
+    var queue = [];
+    function push(key, type, href, title, meta, priority) {
+      var response = results[key];
+      array(response && response.items).forEach(function (item) {
+        queue.push({
+          key: key + ':' + item.id,
+          type: type,
+          title: title(item),
+          meta: meta(item),
+          href: typeof href === 'function' ? href(item) : href,
+          date: String(item.date || item.startsAt || item.bookingDeadlineAt || item.createdAt || item.submittedAt || item.updatedAt || ''),
+          priority: priority
+        });
+      });
+    }
+    function recordHref(section, status, item) { return '#operations/' + section + '?status=' + encodeURIComponent(status) + '&q=' + encodeURIComponent(item.publicId || item.id || item.businessName || ''); }
+    push('applications:submitted', 'REVIEW', function (item) { return recordHref('applications', 'submitted', item); }, function (item) { return text(item.businessName || item.vendorName, 'Vendor application'); }, function (item) { return 'Submitted ' + localDateTime(item.submittedAt || item.updatedAt); }, 1);
+    push('bookings:requested', 'PLACE', function (item) { return recordHref('bookings', 'requested', item); }, function (item) { return text(item.businessName, bookingBusinessName(item)); }, function (item) { return text(item.marketName, 'Market') + ' · ' + localDate(occurrenceDate(item)); }, 2);
+    push('bookings:approved', 'CONFIRM', function (item) { return recordHref('bookings', 'approved', item); }, function (item) { return text(item.businessName, bookingBusinessName(item)); }, function (item) { return text(item.marketName, 'Market') + ' · Approved, not confirmed'; }, 3);
+    push('bookings:payment_due', 'CONFIRM', function (item) { return recordHref('bookings', 'payment_due', item); }, function (item) { return text(item.businessName, bookingBusinessName(item)); }, function (item) { return text(item.marketName, 'Market') + ' · Fee decision recorded'; }, 3);
+    push('reports:open', 'REPORT', function (item) { return recordHref('moderation', 'open', item); }, function (item) { return text(item.businessName || item.subject, 'Directory report'); }, function (item) { return text(item.reason || item.details, 'Open review'); }, 0);
+    push('inquiries:new', 'INBOX', function (item) { return recordHref('support', 'new', item); }, function (item) { return text(item.subject || item.organization, 'New inquiry'); }, function (item) { return text(item.name, 'Sender') + ' · ' + localDateTime(item.createdAt); }, 2);
+    return queue.sort(function (a, b) { return a.priority - b.priority || a.date.localeCompare(b.date) || a.key.localeCompare(b.key); }).slice(0, 12);
+  }
+
   function overviewView() {
     var s = runtime.snapshot;
     if (!isStaff()) return vendorOverviewView();
-    var openApplications = countStatus(s.applications, ['submitted', 'needs_info', 'needs_information']);
-    var pendingBookings = countStatus(s.bookings, ['requested', 'waitlisted', 'approved', 'payment_due']);
-    var liveMarkets = countStatus(s.occurrences, ['scheduled', 'delayed']);
-    var unresolved = countStatus(s.reports, ['open', 'pending', 'reviewing']) + countStatus(s.partners, ['open', 'pending', 'in_progress']);
-    var queue = [];
-    s.applications.filter(function (x) { return x.status === 'submitted'; }).slice(0, 4).forEach(function (x) { queue.push({ type: 'APPLICATION', title: text(x.businessName || x.vendorName, 'Vendor application'), meta: 'Submitted ' + localDateTime(x.submittedAt || x.updatedAt), href: '#operations/applications' }); });
-    s.bookings.filter(function (x) { return ['requested', 'waitlisted'].indexOf(x.status) >= 0; }).slice(0, 4).forEach(function (x) { queue.push({ type: 'BOOKING', title: bookingBusinessName(x), meta: text(x.marketName, 'Market') + ' · ' + localDate(x.date), href: '#operations/bookings' }); });
-    return pageHead('00 / Owner and manager home', 'RUN THE NEXT MARKET.', 'Decisions, disruptions, and handoffs that need a person—not another spreadsheet.', '<a class="ops-button ink" href="#operations/calendar">Update a market →</a>') +
-      '<section class="ops-metrics" aria-label="Operations totals">' +
-        metric('01', String(openApplications), 'Application queue', openApplications ? 'Needs a reviewer' : 'Caught up') +
-        metric('02', String(pendingBookings), 'Booking decisions', pendingBookings ? 'Awaiting placement' : 'No pending requests') +
-        metric('03', String(liveMarkets), 'Active listings', 'Scheduled or delayed') +
-        metric('04', String(unresolved), 'Open conversations', 'Reports and support') +
+    var applicationReviews = summaryCount('applicationsSubmitted', countStatus(s.applications, ['submitted']));
+    var bookingDecisions = summaryCount('bookingDecisions', countStatus(s.bookings, ['requested']));
+    var readyToConfirm = summaryCount('readyToConfirm', countStatus(s.bookings, ['approved', 'payment_due']));
+    var openReports = summaryCount('openReports', countStatus(s.reports, ['open', 'pending', 'reviewing']));
+    var openInquiries = summaryCount('openInquiries', countStatus(s.partners, ['open', 'pending', 'in_progress']));
+    var waitingVendor = summaryCount('applicationsWaitingOnVendor', countStatus(s.applications, ['needs_info', 'needs_information']));
+    var waitlisted = summaryCount('waitlisted', countStatus(s.bookings, ['waitlisted']));
+    var queue = homeQueueItems();
+    var today = localDate(currentChicagoDate());
+    return pageHead('00 / ' + today, 'RUN THE NEXT MARKET.', 'A role-scoped run sheet of decisions, disruptions, and handoffs that need a person.', '<a class="ops-button ink" href="' + (can('checkin.manage') ? '#operations/roster' : '#operations/calendar') + '">' + (can('checkin.manage') ? 'Open market-day roster →' : 'Update a market →') + '</a>') +
+      '<section class="ops-work-stamps" aria-label="Work that needs staff action">' +
+        metric('REVIEW', String(applicationReviews), 'Submitted applications', applicationReviews ? 'Staff decision needed' : 'Caught up', applicationReviews ? 'tomato' : 'green') +
+        metric('PLACE', String(bookingDecisions), 'New booking requests', bookingDecisions ? 'Placement decision needed' : 'Caught up', bookingDecisions ? 'mustard' : 'green') +
+        metric('CONFIRM', String(readyToConfirm), 'Approved, not confirmed', readyToConfirm ? 'Finish the handoff' : 'Caught up', readyToConfirm ? 'mustard' : 'green') +
+        metric('EXCEPT', String(openReports + openInquiries), 'Reports and inbox', openReports + openInquiries ? 'Review open exceptions' : 'Caught up', openReports + openInquiries ? 'tomato' : 'green') +
       '</section>' +
-      '<div class="ops-two-col"><section class="ops-board mustard"><div class="ops-section-head"><div><span class="ops-kicker">Action queue</span><h2>WHO IS WAITING ON US?</h2></div><span>' + queue.length + ' shown</span></div>' +
-        (queue.length ? '<div class="ops-queue">' + queue.map(function (item, index) { return '<a href="' + item.href + '"><span>' + String(index + 1).padStart(2, '0') + '</span><div><b>' + escapeHTML(item.type) + '</b><h3>' + escapeHTML(item.title) + '</h3><p>' + escapeHTML(item.meta) + '</p></div><strong aria-hidden="true">→</strong></a>'; }).join('') + '</div>' : empty('Nothing is waiting', 'New applications and booking decisions will appear here.', '')) +
-        '</section><section class="ops-panel"><div class="ops-section-head"><div><span class="ops-kicker">Next on the ground</span><h2>UPCOMING MARKETS</h2></div><a href="#operations/calendar">Full calendar →</a></div>' + occurrenceList(s.occurrences.slice().sort(sortDate).slice(0, 5), true) + '</section></div>' +
+      '<p class="ops-waiting-line"><strong>Waiting elsewhere:</strong> ' + waitingVendor + ' application' + (waitingVendor === 1 ? '' : 's') + ' need vendor information · ' + waitlisted + ' booking' + (waitlisted === 1 ? '' : 's') + ' wait for capacity. These are not counted as staff decisions above.</p>' +
+      '<div class="ops-two-col"><section class="ops-board mustard ops-run-sheet"><div class="ops-section-head"><div><span class="ops-kicker">Daily run sheet</span><h2>WHAT NEEDS A PERSON?</h2></div><span>' + (runtime.home.loading ? 'Updating…' : queue.length + ' shown') + '</span></div>' +
+        (runtime.home.error ? '<p class="ops-note">The priority list could not refresh: ' + escapeHTML(runtime.home.error) + '</p>' : queue.length ? '<ol class="ops-priority-list">' + queue.map(function (item) { return '<li><a href="' + attr(item.href) + '"><span class="ops-priority-type">' + escapeHTML(item.type) + '</span><div><h3>' + escapeHTML(item.title) + '</h3><p>' + escapeHTML(item.meta) + '</p></div><strong aria-hidden="true">→</strong></a></li>'; }).join('') + '</ol>' : runtime.home.loaded ? empty('No staff action is queued', 'Waiting-on-vendor and waitlist records remain available in their full lists.', '') : '<div class="ops-run-loading" aria-busy="true">Assembling the authorized work queue…</div>') +
+        '</section><section class="ops-panel"><div class="ops-section-head"><div><span class="ops-kicker">Next on the ground</span><h2>UPCOMING MARKETS</h2></div><a href="#operations/calendar">Full calendar →</a></div>' + occurrenceList(upcomingOccurrences(s.occurrences).slice(0, 5), true) + '</section></div>' +
       readinessPanel();
   }
 
@@ -294,7 +419,13 @@
     var p = runtime.snapshot.policies || {};
     var required = [p.bookingDeadlinePolicy, p.cancellationPolicy, p.weatherPolicy, p.creditRefundPolicy, p.paymentPolicy, p.supportContact];
     var set = required.filter(Boolean).length;
-    return '<section class="ops-readiness"><div><span class="ops-kicker">Operating readiness</span><h2>' + set + ' OF ' + required.length + ' CORE RULES SET</h2><p>Booking automation stays visibly gated until the owner records the deadlines and decision rules staff must follow.</p></div><div class="ops-progress" aria-label="' + set + ' of ' + required.length + ' operating rules set"><span style="width:' + (set / required.length * 100) + '%"></span></div>' + (can('policies.manage') ? '<a class="ops-button outline" href="#operations/policies">Review rules →</a>' : '<span class="ops-kicker">Owner action required</span>') + '</section>';
+    var gates = [
+      { done: set === required.length, title: 'Rules', note: set + ' / ' + required.length + ' complete' },
+      { done: p.approved === true, title: 'Owner review', note: p.approved === true ? 'Approved' : 'Approval missing' },
+      { done: p.operatorAuthorized === true, title: 'Organizer authority', note: p.operatorAuthorized === true ? 'Recorded' : 'Not recorded' },
+      { done: !!p.activatedAt, title: 'Activation', note: p.activatedAt ? 'Active ' + localDateTime(p.activatedAt) : 'Bookings remain gated' }
+    ];
+    return '<section class="ops-readiness"><div><span class="ops-kicker">Operating readiness</span><h2>' + (gates.every(function (gate) { return gate.done; }) ? 'AUTHORIZED RECORD ACTIVE' : 'CLEAR THE FOUR GATES') + '</h2><p>These stages are separate. Saved dates and policies do not activate booking, payment, email, or text delivery by themselves.</p></div><div class="ops-gate-line">' + gates.map(function (gate, index) { return '<div class="' + (gate.done ? 'is-done' : '') + '"><span>' + String(index + 1).padStart(2, '0') + '</span><b>' + escapeHTML(gate.title) + '</b><small>' + escapeHTML(gate.note) + '</small></div>'; }).join('') + '</div>' + (can('policies.manage') ? '<a class="ops-button outline" href="#operations/policies">Review rules →</a>' : '<span class="ops-kicker">Owner action required</span>') + '</section>';
   }
 
   function operatingRecordAuthorized() {
@@ -313,6 +444,9 @@
     var application = runtime.snapshot && runtime.snapshot.applications.find(function (candidate) { return candidate.id === item.applicationId || item.publicId && candidate.publicId === item.publicId; });
     return text(application && application.businessName, item.publicId || 'Vendor');
   }
+  function rosterSlot(value) {
+    return Number.isFinite(value) ? String(value) : text(value, '—');
+  }
   function occurrenceList(items, compact) {
     if (!items.length) return empty('No market occurrences', 'Authorized staff can add the first dated market listing.', '<a class="ops-link" href="#operations/calendar">Open market calendar →</a>');
     return '<div class="ops-occurrence-list">' + items.map(function (item) {
@@ -324,15 +458,15 @@
   }
 
   function calendarView() {
-    var items = runtime.snapshot.occurrences.slice().sort(sortDate);
+    var items = resourceItems('occurrences', runtime.snapshot.occurrences).slice().sort(sortDate);
     var calendarCallout = operatingRecordAuthorized()
       ? '<section class="ops-callout"><strong>Organizer-authorized status lives here.</strong><p>Changing a date or status updates this operating record. Notification delivery still requires configured channels and is logged separately.</p><a href="' + attr(apiUrl('/api/calendar')) + '" target="_blank" rel="noopener">Open calendar feed ↗</a></section>'
       : '<section class="ops-callout warning"><strong>Configuration and preview record.</strong><p>Dates and status changes remain a proposed operating record until the organizer approves the policies, records authority, and activates operations.</p><a href="' + attr(apiUrl('/api/calendar')) + '" target="_blank" rel="noopener">Preview calendar feed ↗</a></section>';
     return pageHead('01 / Market calendar', 'CHANGE IT ONCE.', 'One dated occurrence feeds public status, vendor availability, confirmed lineups, calendar feeds, and notices.', can('occurrences.manage') ? '<button class="ops-button ink" type="button" data-ops-toggle="occurrence-form">Add occurrence +</button>' : '') +
       calendarCallout +
       (can('occurrences.manage') ? occurrenceForm() : '') +
-      '<div class="ops-toolbar"><div class="ops-field"><label for="ops-calendar-filter">Show</label><select id="ops-calendar-filter" data-ops-filter="occurrences"><option value="">All statuses</option><option value="published_listing">Published listing</option><option value="scheduled">Scheduled</option><option value="delayed">Delayed</option><option value="cancelled">Cancelled</option></select></div><p>' + items.length + ' dated records</p></div>' +
-      '<section class="ops-record-grid" data-ops-list="occurrences">' + (items.length ? items.map(occurrenceCard).join('') : empty('No dated markets yet', 'Add a market occurrence after the organizer confirms its date and operating details.', '')) + '</section>';
+      resourceToolbar('occurrences', [['','All statuses'],['draft','Draft · private'],['published_listing','Published listing'],['scheduled','Scheduled'],['delayed','Delayed'],['cancelled','Cancelled']], true) + resourceNotice('occurrences') +
+      '<section class="ops-record-grid" data-ops-list="occurrences">' + (items.length ? items.map(occurrenceCard).join('') : empty('No matching dated markets', 'Clear the filters or add a market occurrence after the organizer confirms its details.', '')) + '</section>' + resourcePageControls('occurrences');
   }
 
   function occurrenceForm(item) {
@@ -342,7 +476,7 @@
       field('Venue', 'venue', item.venue, 'text', true, 'Dal-Rich Towne Square') + field('Date', 'date', occurrenceDate(item), 'date', true) +
       field('Street address', 'address', item.address, 'text', true, '101 S Coit Rd', 'wide') + field('City', 'city', item.city, 'text', true, 'Richardson') + field('Postal code', 'postalCode', item.postalCode, 'text', true, '75080') +
       field('Starts (Central time)', 'startsAt', marketDateTimeInput(item.startsAt), 'datetime-local', true) + field('Ends (Central time)', 'endsAt', marketDateTimeInput(item.endsAt), 'datetime-local', true) +
-      selectField('Status', 'status', item.status || 'published_listing', [['published_listing','Published listing'],['scheduled','Scheduled'],['delayed','Delayed'],['cancelled','Cancelled']]) +
+      selectField('Status', 'status', item.status || 'draft', [['draft','Draft · private'],['published_listing','Published listing'],['scheduled','Scheduled'],['delayed','Delayed'],['cancelled','Cancelled']]) +
       field('Vendor cutoff (Central time)', 'bookingDeadlineAt', marketDateTimeInput(item.bookingDeadlineAt), 'datetime-local', false) + field('10 × 10 fee in dollars', 'fee10x10Dollars', item.fee10x10Cents == null ? '' : item.fee10x10Cents / 100, 'number', false, '45.00') +
       field('Booth capacity', 'capacity', item.capacity, 'number', false, '40') + checkboxField('Open this occurrence for booking requests after all operating-policy gates pass.', 'bookingsOpen', item.bookingsOpen === true) +
       area('Parking notes', 'parkingNotes', item.parkingNotes, 'Where vendors and shoppers should park.', 'wide') +
@@ -355,14 +489,14 @@
 
   function occurrenceCard(item) {
     var capacity = item.capacity == null ? NaN : Number(item.capacity), occupied = occupiedCount(item.id);
-    return '<article class="ops-record" data-filter-status="' + attr(item.status || 'published_listing') + '"><div class="ops-record-head"><span class="' + statusClass(item.status) + '">' + escapeHTML(label(item.status || 'published_listing')) + '</span><span>Updated ' + escapeHTML(localDateTime(item.updatedAt)) + '</span></div><h2>' + escapeHTML(occurrenceName(item)) + '</h2><p class="ops-record-lead">' + escapeHTML(localDate(occurrenceDate(item))) + (occurrenceHours(item) ? ' · ' + escapeHTML(occurrenceHours(item)) : '') + '</p><dl><div><dt>Venue</dt><dd>' + escapeHTML(text(item.venue, 'Not set')) + '</dd></div><div><dt>Booking cutoff</dt><dd>' + escapeHTML(localDateTime(item.bookingDeadlineAt)) + '</dd></div><div><dt>Fee</dt><dd>' + escapeHTML(moneyCents(item.fee10x10Cents)) + '</dd></div><div><dt>Capacity</dt><dd>' + (Number.isFinite(capacity) ? occupied + ' / ' + capacity + ' allocated or occupied' : 'Not set') + '</dd></div></dl>' + (item.loadInNotes ? '<p class="ops-note">' + escapeHTML(item.loadInNotes) + '</p>' : '') + (can('occurrences.manage') ? '<div class="ops-card-actions"><button class="ops-link" type="button" data-ops-edit-occurrence="' + attr(item.id) + '">Edit details</button><button class="ops-link" type="button" data-ops-edit-occurrence="' + attr(item.id) + '" data-next-status="delayed">Mark delayed</button><button class="ops-link danger" type="button" data-ops-edit-occurrence="' + attr(item.id) + '" data-next-status="cancelled">Cancel market</button></div>' : '') + '</article>';
+    return '<article class="ops-record" data-filter-status="' + attr(item.status || 'published_listing') + '"><div class="ops-record-head"><span class="' + statusClass(item.status) + '">' + escapeHTML(label(item.status || 'published_listing')) + '</span><span>Updated ' + escapeHTML(localDateTime(item.updatedAt)) + '</span></div><h2>' + escapeHTML(occurrenceName(item)) + '</h2><p class="ops-record-lead">' + escapeHTML(localDate(occurrenceDate(item))) + (occurrenceHours(item) ? ' · ' + escapeHTML(occurrenceHours(item)) : '') + '</p><dl><div><dt>Venue</dt><dd>' + escapeHTML(text(item.venue, 'Not set')) + '</dd></div><div><dt>Booking cutoff</dt><dd>' + escapeHTML(localDateTime(item.bookingDeadlineAt)) + '</dd></div><div><dt>Fee</dt><dd>' + escapeHTML(moneyCents(item.fee10x10Cents)) + '</dd></div><div><dt>Capacity</dt><dd>' + (Number.isFinite(capacity) ? occupied + ' / ' + capacity + ' allocated or occupied' : 'Not set') + '</dd></div></dl>' + (item.loadInNotes ? '<p class="ops-note">' + escapeHTML(item.loadInNotes) + '</p>' : '') + '<div class="ops-card-actions">' + (can('checkin.manage') ? '<a class="ops-link" href="#operations/roster?occurrenceId=' + encodeURIComponent(item.id) + '">Open day roster →</a>' : '') + (can('occurrences.manage') ? '<button class="ops-link" type="button" data-ops-repeat-occurrence="' + attr(item.id) + '">Repeat date…</button><button class="ops-link" type="button" data-ops-edit-occurrence="' + attr(item.id) + '">Edit details</button><button class="ops-link" type="button" data-ops-edit-occurrence="' + attr(item.id) + '" data-next-status="delayed">Mark delayed</button><button class="ops-link danger" type="button" data-ops-edit-occurrence="' + attr(item.id) + '" data-next-status="cancelled">Cancel market</button>' : '') + '</div></article>';
   }
 
   function applicationsView() {
     if (!isStaff()) return applicationVendorView();
-    var items = runtime.snapshot.applications.slice().sort(function (a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
-    return pageHead('02 / Vendor applications', 'REVIEW THE BUSINESS ONCE.', 'Eligibility, documents, questions, and the decision stay attached to one reusable application.', '') + filterBar('applications', [['','All applications'],['submitted','Submitted'],['needs_info','Needs information'],['approved','Approved'],['rejected','Declined'],['withdrawn','Withdrawn']], items.length + ' applications') +
-      '<section class="ops-review-list" data-ops-list="applications">' + (items.length ? items.map(applicationReviewCard).join('') : empty('No applications in the queue', 'Submitted applications will appear here with their review history.', '')) + '</section>';
+    var items = resourceItems('applications', runtime.snapshot.applications).slice().sort(function (a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
+    return pageHead('02 / Vendor applications', 'REVIEW THE BUSINESS ONCE.', 'Search the complete authorized record, then keep the decision and its explanation on the reusable application.', '') + resourceToolbar('applications', [['','All applications'],['submitted','Submitted'],['needs_info','Needs information'],['approved','Approved'],['rejected','Declined'],['withdrawn','Withdrawn']], false) + resourceNotice('applications') +
+      '<section class="ops-review-list" data-ops-list="applications">' + (items.length ? items.map(applicationReviewCard).join('') : empty('No matching applications', 'Clear the filters or wait for a vendor to submit an application.', '')) + '</section>' + resourcePageControls('applications');
   }
 
   function applicationReviewCard(item) {
@@ -397,9 +531,9 @@
 
   function bookingsView() {
     if (!isStaff()) return vendorBookingsView();
-    var items = runtime.snapshot.bookings.slice().sort(function (a, b) { return String(occurrenceDate(a)).localeCompare(String(occurrenceDate(b))); });
-    return pageHead('03 / Booking control', 'PLACE EVERY VENDOR.', 'Capacity, waitlists, decisions, arrival status, and cancellation history stay with the dated market.', '') + filterBar('bookings', [['','All bookings'],['requested','Requested'],['waitlisted','Waitlisted'],['approved','Approved'],['payment_due','Payment due'],['confirmed','Confirmed'],['attended','Attended'],['cancelled','Cancelled'],['rejected','Declined']], items.length + ' booking records') +
-      '<section class="ops-booking-table" data-ops-list="bookings">' + (items.length ? items.map(bookingManagerRow).join('') : empty('No booking requests', 'Vendor market-date requests will appear here after submission.', '')) + '</section>';
+    var items = resourceItems('bookings', runtime.snapshot.bookings).slice().sort(function (a, b) { return String(occurrenceDate(a)).localeCompare(String(occurrenceDate(b))); });
+    return pageHead('03 / Booking control', 'PLACE EVERY VENDOR.', 'Search the authorized record, decide placement, and keep arrival work on the separate market-day roster.', can('checkin.manage') ? '<a class="ops-button ink" href="#operations/roster">Open market-day roster →</a>' : '') + resourceToolbar('bookings', [['','All bookings'],['requested','Requested'],['waitlisted','Waitlisted'],['approved','Approved'],['payment_due','Payment due'],['confirmed','Confirmed'],['attended','Attended'],['no_show','No-show'],['cancelled','Cancelled'],['rejected','Declined']], true) + resourceNotice('bookings') +
+      '<section class="ops-booking-table" data-ops-list="bookings">' + (items.length ? items.map(bookingManagerRow).join('') : empty('No matching bookings', 'Clear the filters or wait for an approved vendor to submit a market-date request.', '')) + '</section>' + resourcePageControls('bookings');
   }
 
   function bookingManagerRow(item) {
@@ -422,6 +556,40 @@
   function bookingList(items, showActions) {
     if (!items.length) return empty('No market-date requests', 'Approved vendors can request a dated occurrence when availability is published.', '<a class="ops-link" href="#operations/my-bookings">Find market dates →</a>');
     return '<div class="ops-booking-list">' + items.map(function (item) { return '<article><div><span class="' + statusClass(item.status) + '">' + escapeHTML(label(item.status)) + '</span><h3>' + escapeHTML(text(item.marketName, 'Market')) + '</h3><p>' + escapeHTML(localDate(occurrenceDate(item))) + ' · ' + escapeHTML(text(item.boothSize, '10 × 10')) + '</p></div><div><strong>' + escapeHTML(item.feeCents != null ? moneyCents(item.feeCents) : 'Fee pending') + '</strong><small>' + escapeHTML(text(item.staffNote, 'No staff note')) + '</small>' + (showActions && ['requested','waitlisted','approved','payment_due','confirmed'].indexOf(item.status) >= 0 ? '<button class="ops-link danger" type="button" data-ops-cancel-booking="' + attr(item.id) + '">Cancel request</button>' : '') + '</div></article>'; }).join('') + '</div>';
+  }
+
+  function rosterOccurrenceOptions() {
+    var today = currentChicagoDate();
+    return runtime.snapshot.occurrences.filter(function (item) {
+      return ['published_listing', 'scheduled', 'delayed'].indexOf(item.status || 'published_listing') >= 0;
+    }).sort(function (a, b) {
+      var aDate = String(occurrenceDate(a)).slice(0, 10), bDate = String(occurrenceDate(b)).slice(0, 10);
+      var aFuture = aDate >= today, bFuture = bDate >= today;
+      if (aFuture !== bFuture) return aFuture ? -1 : 1;
+      return aFuture ? aDate.localeCompare(bDate) : bDate.localeCompare(aDate);
+    });
+  }
+
+  function rosterView() {
+    var state = resourceState('roster');
+    var options = rosterOccurrenceOptions();
+    if (!state.filters.occurrenceId && options.length) state.filters.occurrenceId = options[0].id;
+    var selectedOccurrence = state.occurrence || occurrenceById(state.filters.occurrenceId);
+    var items = state.loaded ? state.items : [];
+    var summary = state.summary || {};
+    var expected = Number.isInteger(summary.expected) ? summary.expected : items.filter(function (item) { return item.status === 'confirmed'; }).length;
+    var attended = Number.isInteger(summary.attended) ? summary.attended : items.filter(function (item) { return item.status === 'attended'; }).length;
+    var noShow = Number.isInteger(summary.noShow) ? summary.noShow : items.filter(function (item) { return item.status === 'no_show'; }).length;
+    var remaining = Math.max(0, expected - attended - noShow);
+    var selector = '<form class="ops-roster-select" data-ops-roster-select><div class="ops-field"><label for="ops-roster-occurrence">Market day</label><select id="ops-roster-occurrence" name="occurrenceId" required><option value="">Choose a dated market</option>' + options.map(function (item) { return '<option value="' + attr(item.id) + '"' + selected(state.filters.occurrenceId, item.id) + '>' + escapeHTML(localDate(occurrenceDate(item)) + ' — ' + occurrenceName(item)) + '</option>'; }).join('') + '</select></div><div class="ops-field ops-search-field"><label for="ops-roster-q">Find vendor or slot</label><input id="ops-roster-q" name="q" maxlength="80" value="' + attr(state.filters.q || '') + '" placeholder="Business, public ID, or slot"></div><div class="ops-field"><label for="ops-roster-status">Arrival</label><select id="ops-roster-status" name="status"><option value=""' + selected(state.filters.status, '') + '>Everyone expected</option><option value="confirmed"' + selected(state.filters.status, 'confirmed') + '>Not checked in</option><option value="attended"' + selected(state.filters.status, 'attended') + '>Arrived</option><option value="no_show"' + selected(state.filters.status, 'no_show') + '>No-show</option></select></div><div class="ops-filter-actions"><button class="ops-button primary" type="submit">Open roster</button><button class="ops-link" type="button" data-ops-resource-reset="roster">Clear search</button></div></form>';
+    var header = selectedOccurrence ? '<section class="ops-roster-head"><div class="ops-date-block"><strong>' + escapeHTML(localDate(occurrenceDate(selectedOccurrence)).split(',')[0]) + '</strong><span>' + escapeHTML(localDate(occurrenceDate(selectedOccurrence)).replace(/^[^,]+,\s*/, '')) + '</span></div><div><span class="ops-kicker">Selected market day</span><h2>' + escapeHTML(occurrenceName(selectedOccurrence)) + '</h2><p>' + escapeHTML(text(selectedOccurrence.venue, 'Venue not supplied')) + (occurrenceHours(selectedOccurrence) ? ' · ' + escapeHTML(occurrenceHours(selectedOccurrence)) : '') + '</p></div><div class="ops-roster-tools"><button class="ops-button outline" type="button" data-ops-print-roster>Print all matching rows</button><button class="ops-button ink" type="button" data-ops-export-matching="roster">Export matching rows CSV</button></div></section>' : '';
+    var totals = selectedOccurrence ? '<section class="ops-roster-summary" aria-label="Arrival totals"><div><strong>' + expected + '</strong><span>Expected</span></div><div><strong>' + attended + '</strong><span>Arrived</span></div><div><strong>' + noShow + '</strong><span>No-show</span></div><div class="' + (remaining ? 'needs-action' : 'complete') + '"><strong>' + remaining + '</strong><span>Still to mark</span></div></section>' : '';
+    var rows = items.length ? '<ol class="ops-roster-list">' + items.map(function (item) {
+      var action = item.status === 'confirmed' ? '<div class="ops-roster-actions"><button class="ops-button primary" type="button" data-ops-roster-status="attended" data-id="' + attr(item.id) + '">Mark arrived</button><button class="ops-link danger" type="button" data-ops-roster-status="no_show" data-id="' + attr(item.id) + '">No-show…</button></div>' : '<span class="ops-roster-stamp ' + attr(item.status) + '">' + escapeHTML(label(item.status)) + '</span>';
+      return '<li><span class="ops-roster-slot">' + escapeHTML(rosterSlot(item.slotNumber)) + '</span><div><span class="ops-kicker">' + escapeHTML(text(item.publicId, 'Vendor record')) + '</span><h3>' + escapeHTML(text(item.businessName, 'Vendor')) + '</h3><p>' + escapeHTML(text(item.boothSize, 'Booth size not set')) + '</p></div>' + action + '</li>';
+    }).join('') + '</ol>' : state.loaded && selectedOccurrence ? empty('No matching vendors', 'Clear the roster search or arrival filter. Only confirmed, attended, and no-show records belong on this list.', '') : '';
+    return pageHead('DAY / Market-day roster', 'CHECK IN THE LINEUP.', 'One selected occurrence, the minimum safe vendor details, and fast recorded arrival decisions.', '') +
+      '<section class="ops-callout"><strong>Arrival record only.</strong><p>This view excludes contact details, documents, fees, and staff notes. Printing and export include only the selected, authorized market day.' + (runtime.snapshot.viewer.role === 'check_in' ? ' Check-in staff can mark arrival after the market starts and no-show after it ends.' : '') + '</p></section>' + selector + resourceNotice('roster') + header + totals + rows + resourcePageControls('roster');
   }
 
   function vendorBookingsView() {
@@ -483,10 +651,10 @@
   }
 
   function notificationsView() {
-    var items = runtime.snapshot.notifications;
+    var items = isStaff() ? resourceItems('notifications', runtime.snapshot.notifications) : runtime.snapshot.notifications;
     var unread = items.filter(function (x) { return !x.readAt && x.read !== true; }).length;
     return pageHead(isStaff() ? '05 / Notification center' : '04 / Account messages', 'THE UPDATE AND ITS DELIVERY.', isStaff() ? 'Operational notices stay in the signed-in account with the delivery state returned by the service.' : 'Application, booking, and market-day updates stay attached to your account.', unread ? '<button class="ops-button outline" type="button" data-ops-read-all>Mark all read</button>' : '') +
-      '<div class="ops-notice-layout"><section class="ops-notice-list">' + (items.length ? items.map(function (n) { var delivery = Object.keys(n.delivery || {}).map(function (key) { return key + ': ' + n.delivery[key]; }).join(' · '); var href = typeof n.href === 'string' && /^#operations(?:\/|$)/.test(n.href) ? '<a class="ops-link" href="' + attr(n.href) + '">Open related record →</a>' : ''; return '<article class="' + (!n.readAt && n.read !== true ? 'is-unread' : '') + '"><div><span class="ops-kicker">' + escapeHTML(label(n.kind || n.type || n.channel || 'Update')) + '</span><h2>' + escapeHTML(text(n.title, 'Account update')) + '</h2><p>' + escapeHTML(text(n.message || n.body)) + '</p><small>' + escapeHTML(localDateTime(n.createdAt)) + ' · ' + escapeHTML(delivery || n.deliveryStatus || 'In-account record') + '</small>' + href + '</div>' + (!n.readAt && n.read !== true ? '<button class="ops-link" type="button" data-ops-action="notification.read" data-id="' + attr(n.id) + '">Mark read</button>' : '') + '</article>'; }).join('') : empty('No account messages', 'Decisions and operational updates will appear here.', '')) + '</section>' + preferencePanel() + '</div>';
+      (isStaff() ? resourceToolbar('notifications', [['','All notices'],['unread','Unread'],['read','Read']], false) + resourceNotice('notifications') : '') + '<div class="ops-notice-layout"><section class="ops-notice-list">' + (items.length ? items.map(function (n) { var delivery = Object.keys(n.delivery || {}).map(function (key) { return key + ': ' + n.delivery[key]; }).join(' · '); var href = typeof n.href === 'string' && /^#operations(?:\/|$)/.test(n.href) ? '<a class="ops-link" href="' + attr(n.href) + '">Open related record →</a>' : ''; return '<article class="' + (!n.readAt && n.read !== true ? 'is-unread' : '') + '"><div><span class="ops-kicker">' + escapeHTML(label(n.kind || n.type || n.channel || 'Update')) + '</span><h2>' + escapeHTML(text(n.title, 'Account update')) + '</h2><p>' + escapeHTML(text(n.message || n.body)) + '</p><small>' + escapeHTML(localDateTime(n.createdAt)) + ' · ' + escapeHTML(delivery || n.deliveryStatus || 'In-account record') + '</small>' + href + '</div>' + (!n.readAt && n.read !== true ? '<button class="ops-link" type="button" data-ops-action="notification.read" data-id="' + attr(n.id) + '">Mark read</button>' : '') + '</article>'; }).join('') : empty('No matching account messages', 'Clear the search or wait for a new operational update.', '')) + (isStaff() ? resourcePageControls('notifications') : '') + '</section>' + preferencePanel() + '</div>';
   }
 
   function preferencePanel() {
@@ -494,16 +662,16 @@
   }
 
   function moderationView() {
-    var items = runtime.snapshot.reports;
+    var items = resourceItems('reports', runtime.snapshot.reports);
     var canModerateVendor = runtime.snapshot.viewer.role !== 'market_manager' && can('moderation.manage');
-    return pageHead('06 / Public content review', 'KEEP THE DIRECTORY TRUSTWORTHY.', 'Visitor reports, staff resolution, and separate vendor suspension or reinstatement actions stay recorded.', '') +
-      '<section class="ops-review-list">' + (items.length ? items.map(function (r) { var actions = '<div class="ops-action-stack">' + (['resolved','dismissed'].indexOf(r.status) < 0 ? '<button class="ops-button primary" type="button" data-ops-transition="report" data-id="' + attr(r.id) + '" data-status="resolved">Resolve report</button><button class="ops-button outline" type="button" data-ops-transition="report" data-id="' + attr(r.id) + '" data-status="dismissed">Dismiss report</button>' : '') + (canModerateVendor && r.publicVendorId ? '<button class="ops-link danger" type="button" data-ops-moderate-vendor="' + attr(r.publicVendorId) + '" data-status="suspended">Suspend vendor profile</button><button class="ops-link" type="button" data-ops-moderate-vendor="' + attr(r.publicVendorId) + '" data-status="active">Reinstate vendor profile</button>' : '') + '</div>'; return '<article class="ops-review-card"><div class="ops-review-main"><div class="ops-record-head"><span class="' + statusClass(r.status) + '">' + escapeHTML(label(r.status)) + '</span><span>' + escapeHTML(localDateTime(r.createdAt)) + '</span></div><h2>' + escapeHTML(text(r.businessName || r.subject, 'Directory report')) + '</h2><p>' + escapeHTML(text(r.reason || r.details || r.message)) + '</p><dl><div><dt>Reported item</dt><dd>' + escapeHTML(text(r.targetType, 'Profile')) + '</dd></div><div><dt>Contact supplied</dt><dd>' + escapeHTML(text(r.contact, 'None')) + '</dd></div></dl></div><aside><label for="report-note-' + attr(r.id) + '">Report resolution</label><textarea id="report-note-' + attr(r.id) + '" rows="5" maxlength="2000" data-report-note="' + attr(r.id) + '"></textarea>' + actions + '</aside></article>'; }).join('') : empty('No reports awaiting review', 'New directory reports will appear here.', '')) + '</section>';
+    return pageHead('06 / Public content review', 'KEEP THE DIRECTORY TRUSTWORTHY.', 'Visitor reports, staff resolution, and separate vendor suspension or reinstatement actions stay recorded.', '') + resourceToolbar('reports', [['','All reports'],['open','Open'],['reviewing','Reviewing'],['resolved','Resolved'],['dismissed','Dismissed']], false) + resourceNotice('reports') +
+      '<section class="ops-review-list">' + (items.length ? items.map(function (r) { var actions = '<div class="ops-action-stack">' + (['resolved','dismissed'].indexOf(r.status) < 0 ? '<button class="ops-button primary" type="button" data-ops-transition="report" data-id="' + attr(r.id) + '" data-status="resolved">Resolve report</button><button class="ops-button outline" type="button" data-ops-transition="report" data-id="' + attr(r.id) + '" data-status="dismissed">Dismiss report</button>' : '') + (canModerateVendor && r.publicVendorId ? '<button class="ops-link danger" type="button" data-ops-moderate-vendor="' + attr(r.publicVendorId) + '" data-status="suspended">Suspend vendor profile</button><button class="ops-link" type="button" data-ops-moderate-vendor="' + attr(r.publicVendorId) + '" data-status="active">Reinstate vendor profile</button>' : '') + '</div>'; return '<article class="ops-review-card"><div class="ops-review-main"><div class="ops-record-head"><span class="' + statusClass(r.status) + '">' + escapeHTML(label(r.status)) + '</span><span>' + escapeHTML(localDateTime(r.createdAt)) + '</span></div><h2>' + escapeHTML(text(r.businessName || r.subject, 'Directory report')) + '</h2><p>' + escapeHTML(text(r.reason || r.details || r.message)) + '</p><dl><div><dt>Reported item</dt><dd>' + escapeHTML(text(r.targetType, 'Profile')) + '</dd></div><div><dt>Contact supplied</dt><dd>' + escapeHTML(text(r.contact, 'None')) + '</dd></div></dl></div><aside><label for="report-note-' + attr(r.id) + '">Report resolution</label><textarea id="report-note-' + attr(r.id) + '" rows="5" maxlength="2000" data-report-note="' + attr(r.id) + '"></textarea>' + actions + '</aside></article>'; }).join('') : empty('No matching reports', 'Clear the filters or wait for a new directory report.', '')) + '</section>' + resourcePageControls('reports');
   }
 
   function supportView() {
-    var items = runtime.snapshot.threads.concat(runtime.snapshot.partners);
-    return pageHead(isStaff() ? '07 / Shared operations inbox' : '05 / Support', isStaff() ? 'KEEP THE CONTEXT WITH THE QUESTION.' : 'ASK ON THE RIGHT RECORD.', isStaff() ? 'Vendor and partner inquiries, internal notes, and resolution status stay visible to authorized staff.' : 'Include the relevant application, booking, profile, or market ID so staff can review the right record.', '<button class="ops-button ink" type="button" data-ops-toggle="support-form">New inquiry +</button>') + supportForm() +
-      '<section class="ops-thread-list">' + (items.length ? items.map(function (t) { var notes = runtime.snapshot.inquiryMessages.filter(function (message) { return message.inquiryId === t.id; }); return '<article><div class="ops-record-head"><span class="' + statusClass(t.status || 'open') + '">' + escapeHTML(label(t.status || 'open')) + '</span><span>' + escapeHTML(localDateTime(t.updatedAt || t.createdAt)) + '</span></div><h2>' + escapeHTML(text(t.subject, t.organization || label(t.kind || 'support') + ' inquiry')) + '</h2><p>' + escapeHTML(text(t.preview || t.lastMessage || t.message)) + '</p><div class="ops-thread-meta"><span>' + escapeHTML(text(t.name, 'Unknown sender')) + '</span><span>' + escapeHTML(label(t.kind || 'support')) + '</span></div>' + (notes.length ? '<div class="ops-note"><strong>Internal notes</strong><ul>' + notes.slice().reverse().map(function (note) { return '<li>' + escapeHTML(note.body) + '</li>'; }).join('') + '</ul></div>' : '') + (isStaff() ? '<div class="ops-card-actions"><button class="ops-link" type="button" data-ops-note-inquiry="' + attr(t.id) + '">Add internal note →</button><button class="ops-link" type="button" data-ops-resolve-inquiry="' + attr(t.id) + '">Record internal resolution →</button></div>' : '<span class="ops-kicker">This form saves a staff-review record; it does not send an email.</span>') + '</article>'; }).join('') : empty('No open inquiries', 'Questions and partner inquiries will appear here with their linked records.', '')) + '</section>';
+    var items = isStaff() ? resourceItems('inquiries', runtime.snapshot.threads.concat(runtime.snapshot.partners)) : runtime.snapshot.threads.concat(runtime.snapshot.partners);
+    return pageHead(isStaff() ? '07 / Shared operations inbox' : '05 / Support', isStaff() ? 'KEEP THE CONTEXT WITH THE QUESTION.' : 'ASK ON THE RIGHT RECORD.', isStaff() ? 'Vendor and partner inquiries, internal notes, and resolution status stay visible to authorized staff.' : 'Include the relevant application, booking, profile, or market ID so staff can review the right record.', '<button class="ops-button ink" type="button" data-ops-toggle="support-form">New inquiry +</button>') + supportForm() + (isStaff() ? resourceToolbar('inquiries', [['','All inquiries'],['new','New'],['in_progress','In progress'],['closed','Closed']], false) + resourceNotice('inquiries') : '') +
+      '<section class="ops-thread-list">' + (items.length ? items.map(function (t) { var notes = runtime.snapshot.inquiryMessages.filter(function (message) { return message.inquiryId === t.id; }); return '<article><div class="ops-record-head"><span class="' + statusClass(t.status || 'open') + '">' + escapeHTML(label(t.status || 'open')) + '</span><span>' + escapeHTML(localDateTime(t.updatedAt || t.createdAt)) + '</span></div><h2>' + escapeHTML(text(t.subject, t.organization || label(t.kind || 'support') + ' inquiry')) + '</h2><p>' + escapeHTML(text(t.preview || t.lastMessage || t.message)) + '</p><div class="ops-thread-meta"><span>' + escapeHTML(text(t.name, 'Unknown sender')) + '</span><span>' + escapeHTML(label(t.kind || 'support')) + '</span></div>' + (notes.length ? '<div class="ops-note"><strong>Internal notes</strong><ul>' + notes.slice().reverse().map(function (note) { return '<li>' + escapeHTML(note.body) + '</li>'; }).join('') + '</ul></div>' : '') + (isStaff() ? '<div class="ops-card-actions"><button class="ops-link" type="button" data-ops-note-inquiry="' + attr(t.id) + '">Add internal note →</button><button class="ops-link" type="button" data-ops-resolve-inquiry="' + attr(t.id) + '">Record internal resolution →</button></div>' : '<span class="ops-kicker">This form saves a staff-review record; it does not send an email.</span>') + '</article>'; }).join('') : empty('No matching inquiries', 'Clear the filters or wait for a new vendor or partner inquiry.', '')) + (isStaff() ? resourcePageControls('inquiries') : '') + '</section>';
   }
 
   function supportForm() {
@@ -511,18 +679,56 @@
   }
 
   function dataView() {
-    var audit = runtime.snapshot.audit;
+    var audit = resourceItems('audit', runtime.snapshot.audit);
     var backup = runtime.latestBackup;
     var preview = runtime.backupPreview;
     var ownerOrAdmin = ['owner', 'admin'].indexOf(runtime.snapshot.viewer.role) >= 0;
     return pageHead('09 / Records and recovery', 'TAKE THE RECORD WITH YOU.', 'Portable exports, activity history, verified snapshots, and non-destructive restore previews keep the operating record recoverable.', can('data.export') ? '<button class="ops-button ink" type="button" data-ops-export="full">Download visible archive</button>' : '') +
       '<section class="ops-data-grid"><article class="ops-board green"><span class="ops-kicker">Portable records</span><h2>EXPORT BY OPERATING AREA</h2><p>These downloads contain the records currently returned to this signed-in role.</p><div class="ops-export-buttons"><button type="button" data-ops-export="applications">Applications CSV</button><button type="button" data-ops-export="bookings">Bookings CSV</button><button type="button" data-ops-export="occurrences">Market calendar CSV</button><button type="button" data-ops-export="full">Visible JSON</button></div></article><article class="ops-panel"><span class="ops-kicker">Database recovery</span><h2>' + (preview ? 'PREVIEW VERIFIED' : backup ? 'SNAPSHOT CREATED' : 'NO SNAPSHOT SELECTED') + '</h2><p>Server snapshots are integrity-checked before preview. Restore is owner-only, preserves current rows, and returns only records missing from the current database.</p>' + (ownerOrAdmin ? '<button class="ops-button primary" type="button" data-ops-backup-create>Create server snapshot</button><form class="ops-inline-form" data-ops-backup-preview><label for="ops-backup-id">Snapshot ID</label><input id="ops-backup-id" name="id" required value="' + attr(backup && backup.id || preview && preview.id || '') + '" placeholder="backup_…"><button class="ops-button outline" type="submit">Verify restore preview</button></form>' : '<p>Your role can export visible data but cannot create or restore server snapshots.</p>') + (backup ? '<p class="ops-note"><strong>Latest snapshot:</strong> ' + escapeHTML(backup.id) + '<br><strong>Integrity hash:</strong> ' + escapeHTML(backup.sha256) + '</p>' : '') + (preview ? '<div class="ops-note"><strong>Restore mode:</strong> Missing records only<br><strong>Created:</strong> ' + escapeHTML(localDateTime(preview.createdAt)) + '<br><strong>Snapshot counts:</strong> ' + escapeHTML(Object.keys(preview.counts || {}).map(function (key) { return key + ' ' + preview.counts[key]; }).join(' · ')) + '</div>' + (runtime.snapshot.viewer.role === 'owner' ? '<button class="ops-button danger" type="button" data-ops-backup-restore="' + attr(preview.id) + '">Restore missing records…</button>' : '') : '') + '</article></section>' +
       '<section class="ops-panel"><div class="ops-section-head"><div><span class="ops-kicker">Launch connection checklist</span><h2>WHAT STILL NEEDS AN OWNER DECISION?</h2></div><span>Independent proposal status</span></div><div class="ops-checklist"><p><strong>Official authority:</strong> organizer approval, staff roles, market scopes, and operating policies.</p><p><strong>Domain and sender:</strong> final domain, DNS control, verified email sender, consent and unsubscribe rules, and real inbox delivery tests.</p><p><strong>Text messages:</strong> provider, sender registration, explicit opt-in records, quiet hours, STOP handling, and device delivery tests.</p><p><strong>Payments:</strong> approved provider and account owner, fee authority, refund/credit rules, reconciliation, disputes, and test transactions before any live charge path.</p><p><strong>Migration:</strong> source inventory, deduplication, record ownership, document retention, rehearsal import, reconciliation, and signed cutover approval.</p></div></section>' +
-      '<section class="ops-panel"><div class="ops-section-head"><div><span class="ops-kicker">Activity history</span><h2>WHO CHANGED WHAT?</h2></div><span>' + audit.length + ' events</span></div><div class="ops-audit-list">' + (audit.length ? audit.slice(0, 100).map(function (e) { return '<article><span>' + escapeHTML(localDateTime(e.createdAt || e.at)) + '</span><strong>' + escapeHTML(text(e.actorRole || e.actorSubject || e.actor, 'System')) + '</strong><b>' + escapeHTML(label(e.action)) + '</b><p>' + escapeHTML(text(e.summary || e.reason || e.entityType + ' ' + e.entityId)) + '</p></article>'; }).join('') : '<p>No activity events returned.</p>') + '</div></section>';
+      '<section class="ops-panel"><div class="ops-section-head"><div><span class="ops-kicker">Activity history</span><h2>WHO CHANGED WHAT?</h2></div></div>' + resourceToolbar('audit', [['','All activity']], false) + resourceNotice('audit') + '<div class="ops-audit-list">' + (audit.length ? audit.map(function (e) { return '<article><span>' + escapeHTML(localDateTime(e.createdAt || e.at)) + '</span><strong>' + escapeHTML(text(e.actorRole || e.actorSubject || e.actor, 'System')) + '</strong><b>' + escapeHTML(label(e.action)) + '</b><p>' + escapeHTML(text(e.summary || e.reason || e.entityType + ' ' + e.entityId)) + '</p></article>'; }).join('') : '<p>No matching activity events returned.</p>') + '</div>' + resourcePageControls('audit') + '</section>';
   }
 
-  function filterBar(name, options, count) {
-    return '<div class="ops-toolbar"><div class="ops-field"><label for="ops-filter-' + attr(name) + '">Show</label><select id="ops-filter-' + attr(name) + '" data-ops-filter="' + attr(name) + '">' + options.map(function (x) { return '<option value="' + attr(x[0]) + '">' + escapeHTML(x[1]) + '</option>'; }).join('') + '</select></div><p>' + escapeHTML(count) + '</p></div>';
+  function marketOptions() {
+    var seen = {};
+    return runtime.snapshot.occurrences.reduce(function (result, item) {
+      var id = text(item.marketId);
+      if (!id || seen[id]) return result;
+      seen[id] = true;
+      result.push([id, occurrenceName(item)]);
+      return result;
+    }, []).sort(function (a, b) { return a[1].localeCompare(b[1]); });
+  }
+
+  function resourceToolbar(resource, statusOptions, allowDates) {
+    var state = resourceState(resource);
+    var filters = state.filters;
+    var total = state.loaded && Number.isInteger(state.pageInfo.total) ? state.pageInfo.total : array(runtime.snapshot[resource]).length;
+    var markets = marketOptions();
+    return '<form class="ops-resource-toolbar" data-ops-resource-filter="' + attr(resource) + '">' +
+      '<div class="ops-field ops-search-field"><label for="ops-' + attr(resource) + '-q">Search</label><input id="ops-' + attr(resource) + '-q" name="q" value="' + attr(filters.q || '') + '" maxlength="80" placeholder="Business, ID, market…"></div>' +
+      '<div class="ops-field"><label for="ops-' + attr(resource) + '-status">Status</label><select id="ops-' + attr(resource) + '-status" name="status">' + statusOptions.map(function (option) { return '<option value="' + attr(option[0]) + '"' + selected(filters.status, option[0]) + '>' + escapeHTML(option[1]) + '</option>'; }).join('') + '</select></div>' +
+      (markets.length ? '<div class="ops-field"><label for="ops-' + attr(resource) + '-market">Market</label><select id="ops-' + attr(resource) + '-market" name="marketId"><option value="">All authorized markets</option>' + markets.map(function (option) { return '<option value="' + attr(option[0]) + '"' + selected(filters.marketId, option[0]) + '>' + escapeHTML(option[1]) + '</option>'; }).join('') + '</select></div>' : '') +
+      (allowDates ? '<div class="ops-field"><label for="ops-' + attr(resource) + '-from">From</label><input id="ops-' + attr(resource) + '-from" name="dateFrom" type="date" value="' + attr(filters.dateFrom || '') + '"></div><div class="ops-field"><label for="ops-' + attr(resource) + '-to">Through</label><input id="ops-' + attr(resource) + '-to" name="dateTo" type="date" value="' + attr(filters.dateTo || '') + '"></div>' : '') +
+      '<div class="ops-filter-actions"><button class="ops-button primary" type="submit">Apply filters</button><button class="ops-link" type="button" data-ops-resource-reset="' + attr(resource) + '">Clear</button></div>' +
+      '<div class="ops-filter-scope"><strong>' + escapeHTML(String(total)) + '</strong><span>matching records in your authorized scope</span>' + (can('data.export') || resource === 'roster' ? '<button class="ops-link" type="button" data-ops-export-matching="' + attr(resource) + '">Export all matching CSV ↓</button>' : '') + '</div>' +
+    '</form>';
+  }
+
+  function resourcePageControls(resource) {
+    var state = resourceState(resource);
+    if (!state.loaded || !state.items.length && !state.previous.length || state.pageInfo.total <= state.pageInfo.limit && !state.previous.length) return '';
+    var pageNumber = state.previous.length + 1;
+    var start = state.previous.length * Number(state.pageInfo.limit || 50) + (state.items.length ? 1 : 0);
+    var end = state.previous.length * Number(state.pageInfo.limit || 50) + state.items.length;
+    return '<nav class="ops-pagination" aria-label="' + escapeHTML(label(resource)) + ' pages"><span>Page ' + pageNumber + ' · ' + start + '–' + end + ' of ' + escapeHTML(String(state.pageInfo.total)) + '</span><div><button class="ops-button outline" type="button" data-ops-page="previous" data-resource="' + attr(resource) + '"' + (state.previous.length ? '' : ' disabled') + '>← Previous</button><button class="ops-button outline" type="button" data-ops-page="next" data-resource="' + attr(resource) + '"' + (state.pageInfo.hasMore && state.pageInfo.nextCursor ? '' : ' disabled') + '>Next →</button></div></nav>';
+  }
+
+  function resourceNotice(resource) {
+    var state = resourceState(resource);
+    if (state.error) return '<section class="ops-limit-warning" role="alert"><strong>LIST NOT REFRESHED</strong><p>' + escapeHTML(state.error) + '</p><button class="ops-link" type="button" data-ops-resource-retry="' + attr(resource) + '">Try this list again</button></section>';
+    if (state.loading) return '<p class="ops-resource-loading" role="status">Updating the authorized list…</p>';
+    return '';
   }
 
   function field(labelText, name, value, type, required, placeholder, extraClass) {
@@ -546,11 +752,12 @@
     var allowed = isStaff() ? STAFF_SECTIONS : VENDOR_SECTIONS;
     if (allowed.indexOf(runtime.section) < 0) runtime.section = 'overview';
     if (isStaff()) {
-      var required = { staff: 'staff.manage', policies: 'policies.manage', moderation: 'moderation.manage', support: 'inquiries.manage', data: 'data.export' }[runtime.section];
+      if (runtime.snapshot.viewer.role === 'check_in' && ['applications', 'bookings'].indexOf(runtime.section) >= 0) return pageHead('Scoped staff access', 'MARKET-DAY DETAILS ONLY.', 'Check-in staff use the selected occurrence roster. Applications, fees, documents, and general booking administration stay concealed.', '<a class="ops-button primary" href="#operations/roster">Open market-day roster →</a>');
+      var required = { roster: 'checkin.manage', staff: 'staff.manage', policies: 'policies.manage', moderation: 'moderation.manage', support: 'inquiries.manage', data: 'data.export' }[runtime.section];
       var backupRole = runtime.section === 'data' && ['owner', 'admin'].indexOf(runtime.snapshot.viewer.role) >= 0;
       if (required && !can(required) && !backupRole) return pageHead('Scoped staff access', 'THIS ROLE DOES NOT HOLD THAT KEY.', 'An owner or administrator can change staff responsibilities and market scopes from Team access.', '<a class="ops-button outline" href="#operations">Return to control board →</a>');
     }
-    var views = { overview: overviewView, calendar: calendarView, applications: applicationsView, bookings: bookingsView, staff: staffView, policies: policiesView, notifications: notificationsView, moderation: moderationView, support: supportView, data: dataView, apply: applicationVendorView, 'my-bookings': vendorBookingsView, visits: visitsView, invite: inviteView };
+    var views = { overview: overviewView, calendar: calendarView, applications: applicationsView, bookings: bookingsView, roster: rosterView, staff: staffView, policies: policiesView, notifications: notificationsView, moderation: moderationView, support: supportView, data: dataView, apply: applicationVendorView, 'my-bookings': vendorBookingsView, visits: visitsView, invite: inviteView };
     return (views[runtime.section] || overviewView)();
   }
 
@@ -560,6 +767,7 @@
   }
 
   function boundedRecordsBanner() {
+    if (isStaff() && sectionResource()) return '';
     var bySection = {
       overview: ['applications', 'bookings', 'notifications', 'reports', 'inquiries'],
       applications: ['applications'], apply: ['applications'],
@@ -578,7 +786,7 @@
       var info = runtime.snapshot.pageInfo[key];
       return 'latest ' + (Number.isInteger(info.limit) ? info.limit + ' ' : '') + (labels[key] || label(key));
     }).join(', ');
-    return '<section class="ops-limit-warning" role="status"><strong>BOUNDED ADMIN VIEW</strong><p>Showing the ' + escapeHTML(details) + ' returned to this account. Older records are not included in this view or its exports.</p></section>';
+    return '<section class="ops-limit-warning" role="status"><strong>BOUNDED HOME SUMMARY</strong><p>This page uses the ' + escapeHTML(details) + ' returned for its preview lists. Open a record area to search and page through the authorized set. Matching CSV export walks every filtered page within its safety limit; it is not a transactional snapshot.</p></section>';
   }
 
   function renderCurrent() {
@@ -589,6 +797,7 @@
     bindCurrent();
     var main = runtime.root.querySelector('[data-ops-main]');
     if (main) main.focus({ preventScroll: true });
+    ensureCurrentResource();
   }
 
   async function request(method, path, body, options) {
@@ -620,6 +829,112 @@
       var requestError = new Error(errorMessage); requestError.status = response.status; requestError.data = data; throw requestError;
     }
     return data || {};
+  }
+
+  function sectionResource() {
+    return { calendar: 'occurrences', applications: 'applications', bookings: 'bookings', roster: 'roster', notifications: 'notifications', moderation: 'reports', support: 'inquiries', data: 'audit' }[runtime.section] || '';
+  }
+
+  function updateRouteFilters(resource) {
+    var state = resourceState(resource);
+    var base = runtime.section === 'overview' ? '#operations' : '#operations/' + runtime.section;
+    var params = new URLSearchParams();
+    Object.keys(cleanFilters(state.filters)).forEach(function (key) { params.set(key, state.filters[key]); });
+    var next = base + (params.toString() ? '?' + params.toString() : '');
+    if (window.history && typeof window.history.replaceState === 'function') window.history.replaceState(null, '', next);
+  }
+
+  async function loadResource(resource, options) {
+    options = options || {};
+    var state = resourceState(resource);
+    if (state.loading && !options.force) return;
+    if (state.controller) state.controller.abort();
+    state.loading = true;
+    state.error = '';
+    var requestId = ++state.requestId;
+    state.controller = typeof AbortController === 'function' ? new AbortController() : null;
+    if (options.render !== false) renderCurrent();
+    try {
+      var data = await request('GET', API_PATH + '?' + buildResourceQuery(resource, state.filters, state.cursor, options.limit || 50), null, { signal: state.controller && state.controller.signal });
+      if (requestId !== state.requestId || !runtime.root) return;
+      state.items = normaliseResourceItems(resource, data.items);
+      state.summary = data.summary && typeof data.summary === 'object' ? data.summary : {};
+      state.pageInfo = data.pageInfo && typeof data.pageInfo === 'object' ? data.pageInfo : {};
+      state.occurrence = data.occurrence && typeof data.occurrence === 'object' ? data.occurrence : null;
+      state.loaded = true;
+      state.error = '';
+    } catch (error) {
+      if (error.code === 'aborted' || requestId !== state.requestId) return;
+      state.error = error.message || 'This list could not be loaded.';
+    } finally {
+      if (requestId === state.requestId) {
+        state.loading = false;
+        if (options.render !== false) renderCurrent();
+      }
+    }
+  }
+
+  async function loadHomeResources() {
+    if (!isStaff() || runtime.section !== 'overview' || runtime.home.loading || runtime.home.loaded) return;
+    runtime.home.loading = true;
+    runtime.home.error = '';
+    renderCurrent();
+    var specs = [];
+    if (can('applications.review')) specs.push(['applications:submitted', 'applications', 'submitted']);
+    if (can('bookings.manage')) {
+      specs.push(['bookings:requested', 'bookings', 'requested']);
+      specs.push(['bookings:approved', 'bookings', 'approved']);
+      specs.push(['bookings:payment_due', 'bookings', 'payment_due']);
+    }
+    if (can('moderation.manage')) specs.push(['reports:open', 'reports', 'open']);
+    if (can('inquiries.manage')) specs.push(['inquiries:new', 'inquiries', 'new']);
+    var accountKey = runtime.authUserKey;
+    var responses = await Promise.all(specs.map(async function (spec) {
+      try {
+        var data = await request('GET', API_PATH + '?' + buildResourceQuery(spec[1], { status: spec[2] }, '', 4));
+        return { key: spec[0], resource: spec[1], data: data };
+      } catch (error) { return { key: spec[0], error: error.message || 'Could not load.' }; }
+    }));
+    if (!runtime.root || runtime.authUserKey !== accountKey) return;
+    runtime.home.results = {};
+    var errors = [];
+    responses.forEach(function (response) {
+      if (response.error) errors.push(response.error);
+      else runtime.home.results[response.key] = Object.assign({}, response.data, { items: normaliseResourceItems(response.resource, response.data.items) });
+    });
+    runtime.home.loading = false;
+    runtime.home.loaded = true;
+    runtime.home.error = errors.length ? 'Some authorized work areas did not load. ' + errors[0] : '';
+    renderCurrent();
+  }
+
+  function ensureCurrentResource() {
+    if (!isStaff()) return;
+    var resource = sectionResource();
+    if (runtime.snapshot.viewer.role === 'check_in' && ['applications', 'bookings'].indexOf(resource) >= 0) return;
+    if (resource) {
+      var state = resourceState(resource);
+      if (resource === 'roster' && !state.filters.occurrenceId) {
+        var options = rosterOccurrenceOptions();
+        if (options.length) state.filters.occurrenceId = options[0].id;
+      }
+      if (!state.loaded && !state.error && !state.loading && (resource !== 'roster' || state.filters.occurrenceId)) loadResource(resource);
+    }
+    if (runtime.section === 'overview') loadHomeResources();
+  }
+
+  function invalidateStaffLists() {
+    Object.keys(runtime.resources).forEach(function (key) {
+      var state = runtime.resources[key];
+      if (state.controller) state.controller.abort();
+      state.loaded = false;
+      state.loading = false;
+      state.error = '';
+      state.cursor = '';
+      state.previous = [];
+      state.requestId += 1;
+    });
+    runtime.home = { loading: false, loaded: false, error: '', results: {} };
   }
 
   async function publicOperation(action, payload) {
@@ -674,12 +989,8 @@
     if (nav) nav.innerHTML = '<a class="ops-nav-link is-active" href="#operations" aria-current="page"><span>00</span><b>Account required</b><small>Email/password or Google</small></a>';
     if (account) account.innerHTML = '<span class="ops-kicker">Signed out</span><strong>Private records concealed</strong>';
     if (!content) return;
-    if (typeof window.renderVendorApp === 'function') {
-      content.innerHTML = '<div class="ops-auth-gate">' + window.renderVendorApp('overview') + '</div>';
-      if (typeof window.initVendorApp === 'function') window.initVendorApp('overview');
-    } else {
-      content.innerHTML = '<section class="ops-state-panel"><span>ACCOUNT</span><div><h1>SIGN IN TO CONTINUE.</h1><p>Use email/password or Google sign-in to open applications, bookings, and staff tools.</p><a class="ops-button primary" href="#workspace">Open account sign-in →</a></div></section>';
-    }
+    var vendorRoute = ['apply', 'my-bookings', 'visits'].indexOf(runtime.section) >= 0;
+    content.innerHTML = '<section class="ops-auth-entry"><div class="ops-auth-poster"><span class="ops-kicker">' + (vendorRoute ? 'Vendor account' : 'Owner and market team') + '</span><h1>' + (vendorRoute ? 'OPEN YOUR MARKET RECORD.' : 'OPEN THE DAILY FIELD OFFICE.') + '</h1><p>' + (vendorRoute ? 'Sign in with ordinary email/password or Google to return to applications, bookings, and arrival details saved across devices.' : 'Sign in with the account assigned by the owner to open only the markets and responsibilities in your role.') + '</p><ul><li>One account across phone, tablet, and computer</li><li>Role and market scope enforced by the operations service</li><li>Every saved staff decision remains in the activity record</li></ul></div><div class="ops-auth-card"><span class="ops-kicker">Email/password or Google</span><h2>PRIVATE RECORDS STAY CONCEALED UNTIL SIGN-IN.</h2><p>The shared account screen handles sign-in, account creation, verification, and password reset. Return to Field Office after authentication.</p><a class="ops-button primary" href="#workspace">' + (vendorRoute ? 'Open vendor sign-in →' : 'Owner / market team sign-in →') + '</a>' + (vendorRoute ? '<a class="ops-link" href="#markets">Browse public markets instead →</a>' : '<a class="ops-link" href="#workspace">I am a vendor →</a>') + '</div></section>';
   }
 
   function formPayload(form) {
@@ -697,7 +1008,14 @@
   }
 
   function occurrenceById(occurrenceId) {
-    return runtime.snapshot && runtime.snapshot.occurrences.find(function (item) { return String(item.id) === String(occurrenceId); }) || null;
+    var resource = runtime.resources.occurrences;
+    return runtime.snapshot && runtime.snapshot.occurrences.concat(resource && resource.items || []).find(function (item) { return String(item.id) === String(occurrenceId); }) || null;
+  }
+
+  function operationalRecord(resource, id) {
+    var legacy = resource === 'reports' ? runtime.snapshot.reports : resource === 'inquiries' ? runtime.snapshot.partners.concat(runtime.snapshot.threads) : array(runtime.snapshot[resource]);
+    var state = runtime.resources[resource];
+    return legacy.concat(state && state.items || []).find(function (item) { return String(item.id) === String(id); }) || null;
   }
 
   function setFormValues(form, values) {
@@ -785,6 +1103,7 @@
       var body = { action: mappedAction, payload: payload || {} };
       var result = await request('POST', operationsPath(), body);
       runtime.snapshot = normalise(result.snapshot || result.state || result);
+      if (isStaff()) invalidateStaffLists();
       renderCurrent();
       announce(message || 'Saved.', 'success');
       return result;
@@ -842,6 +1161,86 @@
     });
   }
 
+  function repeatOccurrenceDialog(item) {
+    return new Promise(function (resolve) {
+      var start = marketDateTimeInput(item.startsAt).slice(11, 16);
+      var end = marketDateTimeInput(item.endsAt).slice(11, 16);
+      var dialog = document.createElement('dialog');
+      dialog.className = 'ops-dialog ops-repeat-dialog';
+      dialog.innerHTML = '<div class="ops-dialog-head"><span>REPEAT DATE · REVIEW FIRST</span><strong aria-hidden="true">＋</strong></div><form class="ops-dialog-body"><h2>' + escapeHTML(occurrenceName(item)) + '</h2><p>Enter each approved date on its own line. The preview checks the source version, exact Central-time conversion, and date conflicts before anything is created.</p><div class="ops-field"><label for="ops-repeat-dates">New dates <small>1–12, one YYYY-MM-DD per line</small></label><textarea id="ops-repeat-dates" name="dates" rows="7" required placeholder="2026-12-05&#10;2026-12-12"></textarea></div><div class="ops-dialog-grid"><div class="ops-field"><label for="ops-repeat-start">Starts (Central)</label><input id="ops-repeat-start" name="startsLocal" type="time" value="' + attr(start) + '" required></div><div class="ops-field"><label for="ops-repeat-end">Ends (Central)</label><input id="ops-repeat-end" name="endsLocal" type="time" value="' + attr(end) + '" required></div></div><div class="ops-field"><label for="ops-repeat-source">Verification source</label><input id="ops-repeat-source" name="sourceUrl" type="url" value="' + attr(item.sourceUrl || '') + '" required></div><div class="ops-field"><label for="ops-repeat-checked">Source checked (Central)</label><input id="ops-repeat-checked" name="sourceCheckedAt" type="datetime-local" value="' + attr(marketDateTimeInput(item.sourceCheckedAt)) + '" required></div><section class="ops-callout warning"><strong>No automatic publication or booking.</strong><p>Created records stay private drafts for staff review, with booking requests closed, no deadline, and no copied bookings. Staff must edit each draft and deliberately choose a public status.</p></section><div><button class="ops-button outline" type="button" data-cancel>Go back</button><button class="ops-button primary" type="submit">Preview exact dates</button></div></form>';
+      runtime.root.appendChild(dialog);
+      function finish(value) { try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish(null); });
+      dialog.querySelector('[data-cancel]').addEventListener('click', function () { finish(null); });
+      dialog.querySelector('form').addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (!event.currentTarget.reportValidity()) return;
+        var data = formPayload(event.currentTarget);
+        var dates;
+        try { dates = parseRepeatDates(data.dates); }
+        catch (error) { announce(error.message, 'error'); return; }
+        if (data.endsLocal <= data.startsLocal) { announce('End time must be after start time.', 'error'); return; }
+        finish({ sourceId: item.id, sourceVersion: item.version, dates: dates, startsLocal: data.startsLocal, endsLocal: data.endsLocal, sourceUrl: data.sourceUrl, sourceCheckedAt: marketLocalToIso(data.sourceCheckedAt) });
+      });
+      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      dialog.querySelector('textarea').focus();
+    });
+  }
+
+  function repeatPreviewDialog(payload, result) {
+    return new Promise(function (resolve) {
+      var records = array(result.records);
+      var dialog = document.createElement('dialog');
+      dialog.className = 'ops-dialog ops-repeat-dialog';
+      dialog.innerHTML = '<div class="ops-dialog-head"><span>EXACT DATE PREVIEW</span><strong aria-hidden="true">✓</strong></div><div class="ops-dialog-body"><h2>REVIEW ' + records.length + ' PRIVATE DRAFT' + (records.length === 1 ? '' : 'S') + '.</h2><p>Times below are the server-validated timestamps. Conflicts block creation. New drafts are not public, keep booking requests closed, and do not copy vendors, deadlines, or reservations.</p><ol class="ops-repeat-preview">' + records.map(function (record) { return '<li class="' + (record.conflict ? 'has-conflict' : '') + '"><strong>' + escapeHTML(localDate(record.date)) + '</strong><span>' + escapeHTML(localDateTime(record.startsAt)) + ' – ' + escapeHTML(localDateTime(record.endsAt)) + '</span><b>' + escapeHTML(record.conflict ? text(record.conflict, 'Conflict') : 'No conflict found') + '</b></li>'; }).join('') + '</ol><div><button class="ops-button outline" type="button" data-cancel>Go back to calendar</button><button class="ops-button primary" type="button" data-create' + (result.canCreate === true ? '' : ' disabled') + '>Create private drafts</button></div></div>';
+      runtime.root.appendChild(dialog);
+      function finish(value) { try { dialog.close(); } catch {} dialog.remove(); resolve(value); }
+      dialog.addEventListener('cancel', function (event) { event.preventDefault(); finish(false); });
+      dialog.querySelector('[data-cancel]').addEventListener('click', function () { finish(false); });
+      dialog.querySelector('[data-create]').addEventListener('click', function () { finish(true); });
+      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      dialog.querySelector(result.canCreate === true ? '[data-create]' : '[data-cancel]').focus();
+    });
+  }
+
+  function showCreatedDrafts(ids) {
+    ids = array(ids);
+    if (!ids.length) return;
+    var dialog = document.createElement('dialog');
+    dialog.className = 'ops-dialog';
+    dialog.innerHTML = '<div class="ops-dialog-head"><span>PRIVATE DRAFTS CREATED</span><strong aria-hidden="true">→</strong></div><div class="ops-dialog-body"><h2>REVIEW EACH DATE BEFORE PUBLICATION.</h2><p>These records are private and bookings remain closed. Open every draft, verify the full venue, access, fee, cutoff, and status details, then deliberately promote it when authorized.</p><ol class="ops-created-drafts">' + ids.map(function (id, index) { return '<li><a href="#operations/calendar?status=draft&amp;q=' + encodeURIComponent(id) + '">Review draft ' + (index + 1) + ' <small>' + escapeHTML(id) + '</small> →</a></li>'; }).join('') + '</ol><button class="ops-button primary" type="button" data-close>Done</button></div>';
+    runtime.root.appendChild(dialog);
+    function close() { try { dialog.close(); } catch {} dialog.remove(); }
+    dialog.addEventListener('cancel', function (event) { event.preventDefault(); close(); });
+    dialog.querySelector('[data-close]').addEventListener('click', close);
+    if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+    dialog.querySelector('a,button').focus();
+  }
+
+  async function runRepeatOccurrence(item, button) {
+    var payload = await repeatOccurrenceDialog(item);
+    if (!payload) return;
+    setPending(button, true);
+    try {
+      var previewEnvelope = await request('POST', API_PATH, { action: 'staff.occurrence.repeat.preview', payload: payload });
+      var preview = previewEnvelope.result || {};
+      runtime.repeatPreview = { payload: payload, result: preview };
+      setPending(button, false);
+      if (!await repeatPreviewDialog(payload, preview)) return;
+      if (!await confirmAction('Create these private draft dates?', 'This creates only the reviewed dates. Every draft stays off the public schedule, keeps bookings closed, and requires staff review before publication.', 'Create private drafts', false)) return;
+      setPending(button, true);
+      var createdEnvelope = await request('POST', API_PATH, { action: 'staff.occurrence.repeat.create', payload: Object.assign({}, payload, { previewHash: preview.previewHash, confirm: 'CREATE DATED RECORDS' }) });
+      runtime.snapshot = normalise(createdEnvelope.snapshot || createdEnvelope.state || createdEnvelope);
+      invalidateStaffLists();
+      runtime.repeatPreview = null;
+      renderCurrent();
+      showCreatedDrafts(createdEnvelope.result && createdEnvelope.result.created);
+      announce(String(createdEnvelope.result && createdEnvelope.result.count || payload.dates.length) + ' private draft dates created with bookings closed.', 'success');
+    } catch (error) {
+      announce(error.message || 'The repeat-date review could not be completed.', 'error');
+    } finally { setPending(button, false); }
+  }
+
   function internalNoteDialog(title) {
     return new Promise(function (resolve) {
       var dialog = document.createElement('dialog');
@@ -889,6 +1288,63 @@
   function bindCurrent() {
     if (!runtime.root) return;
     var retry = runtime.root.querySelector('[data-ops-retry]'); if (retry) retry.addEventListener('click', load);
+    runtime.root.querySelectorAll('[data-ops-resource-filter]').forEach(function (form) { form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var resource = form.dataset.opsResourceFilter;
+      var payload = formPayload(form);
+      if (payload.dateFrom && payload.dateTo && payload.dateFrom > payload.dateTo) { announce('The start date must be on or before the end date.', 'error'); form.elements.namedItem('dateFrom')?.focus(); return; }
+      var state = resourceState(resource);
+      state.filters = cleanFilters(payload);
+      state.cursor = '';
+      state.previous = [];
+      state.loaded = false;
+      updateRouteFilters(resource);
+      loadResource(resource, { force: true });
+    }); });
+    var rosterSelect = runtime.root.querySelector('[data-ops-roster-select]'); if (rosterSelect) rosterSelect.addEventListener('submit', function (event) {
+      event.preventDefault();
+      if (!rosterSelect.reportValidity()) return;
+      var state = resourceState('roster');
+      state.filters = cleanFilters(formPayload(rosterSelect));
+      state.cursor = '';
+      state.previous = [];
+      state.loaded = false;
+      state.occurrence = null;
+      updateRouteFilters('roster');
+      loadResource('roster', { force: true });
+    });
+    runtime.root.querySelectorAll('[data-ops-resource-reset]').forEach(function (button) { button.addEventListener('click', function () {
+      var resource = button.dataset.opsResourceReset;
+      var state = resourceState(resource);
+      state.filters = resource === 'roster' && state.filters.occurrenceId ? { occurrenceId: state.filters.occurrenceId } : {};
+      state.cursor = '';
+      state.previous = [];
+      state.loaded = false;
+      updateRouteFilters(resource);
+      loadResource(resource, { force: true });
+    }); });
+    runtime.root.querySelectorAll('[data-ops-resource-retry]').forEach(function (button) { button.addEventListener('click', function () { loadResource(button.dataset.opsResourceRetry, { force: true }); }); });
+    runtime.root.querySelectorAll('[data-ops-page]').forEach(function (button) { button.addEventListener('click', function () {
+      var state = resourceState(button.dataset.resource);
+      if (button.dataset.opsPage === 'next' && state.pageInfo.nextCursor) { state.previous.push(state.cursor || ''); state.cursor = state.pageInfo.nextCursor; }
+      else if (button.dataset.opsPage === 'previous' && state.previous.length) state.cursor = state.previous.pop();
+      else return;
+      state.loaded = false;
+      loadResource(button.dataset.resource, { force: true });
+    }); });
+    runtime.root.querySelectorAll('[data-ops-export-matching]').forEach(function (button) { button.addEventListener('click', function () { exportMatchingResource(button.dataset.opsExportMatching, button); }); });
+    var printRoster = runtime.root.querySelector('[data-ops-print-roster]'); if (printRoster) printRoster.addEventListener('click', function () { printMatchingRoster(printRoster); });
+    runtime.root.querySelectorAll('[data-ops-roster-status]').forEach(function (button) { button.addEventListener('click', async function () {
+      var record = operationalRecord('roster', button.dataset.id);
+      if (!record) return;
+      var status = button.dataset.opsRosterStatus;
+      var reason = '';
+      if (status === 'no_show') {
+        reason = await reasonDialog('Record this vendor as a no-show?', 'The reason stays on the booking history. Confirm the vendor and selected market day before continuing.', 'Record no-show');
+        if (!reason) return;
+      }
+      await mutate('booking.transition', { id: record.id, version: record.version, status: status, note: reason, reason: reason }, button, status === 'attended' ? 'Arrival recorded.' : 'No-show recorded.');
+    }); });
     runtime.root.querySelectorAll('[data-ops-toggle]').forEach(function (button) { button.addEventListener('click', function () { var drawer = runtime.root.querySelector('[data-drawer="' + CSS.escape(button.dataset.opsToggle) + '"]'); if (drawer) { drawer.hidden = false; drawer.scrollIntoView({ behavior: 'smooth', block: 'start' }); drawer.querySelector('input,select,textarea')?.focus(); } }); });
     runtime.root.querySelectorAll('[data-ops-close]').forEach(function (button) { button.addEventListener('click', function () { var drawer = runtime.root.querySelector('[data-drawer="' + CSS.escape(button.dataset.opsClose) + '"]'); if (drawer) drawer.hidden = true; }); });
     runtime.root.querySelectorAll('[data-ops-filter]').forEach(function (select) { select.addEventListener('change', function () { var list = runtime.root.querySelector('[data-ops-list="' + CSS.escape(select.dataset.opsFilter) + '"]'); if (!list) return; list.querySelectorAll('[data-filter-status]').forEach(function (item) { item.hidden = !!select.value && item.dataset.filterStatus !== select.value; }); }); });
@@ -936,15 +1392,19 @@
       var form = runtime.root.querySelector('[data-drawer="occurrence-form"]');
       if (!item || !form) return;
       setFormValues(form, item);
-      setFormValues(form, { name: item.name || item.marketName, date: occurrenceDate(item), startsAt: marketDateTimeInput(item.startsAt), endsAt: marketDateTimeInput(item.endsAt), bookingDeadlineAt: marketDateTimeInput(item.bookingDeadlineAt), sourceCheckedAt: marketDateTimeInput(item.sourceCheckedAt), fee10x10Dollars: item.fee10x10Cents == null ? '' : item.fee10x10Cents / 100, status: button.dataset.nextStatus || item.status || 'published_listing', version: item.version });
+      setFormValues(form, { name: item.name || item.marketName, date: occurrenceDate(item), startsAt: marketDateTimeInput(item.startsAt), endsAt: marketDateTimeInput(item.endsAt), bookingDeadlineAt: marketDateTimeInput(item.bookingDeadlineAt), sourceCheckedAt: marketDateTimeInput(item.sourceCheckedAt), fee10x10Dollars: item.fee10x10Cents == null ? '' : item.fee10x10Cents / 100, status: button.dataset.nextStatus || item.status || 'draft', version: item.version });
       form.hidden = false;
       form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       if (button.dataset.nextStatus) form.elements.namedItem('loadInNotes')?.focus(); else form.elements.namedItem('name')?.focus();
     }); });
+    runtime.root.querySelectorAll('[data-ops-repeat-occurrence]').forEach(function (button) { button.addEventListener('click', function () {
+      var item = operationalRecord('occurrences', button.dataset.opsRepeatOccurrence);
+      if (item) runRepeatOccurrence(item, button);
+    }); });
     runtime.root.querySelectorAll('[data-ops-action]').forEach(function (button) { button.addEventListener('click', async function () {
       var action = button.dataset.opsAction;
-      var source = action.indexOf('application.') === 0 ? runtime.snapshot.applications : runtime.snapshot.notifications;
-      var record = source.find(function (item) { return String(item.id) === String(button.dataset.id); });
+      var sourceName = action.indexOf('application.') === 0 ? 'applications' : 'notifications';
+      var record = operationalRecord(sourceName, button.dataset.id);
       if (!record) return;
       if (action === 'application.withdraw' && !await confirmAction('Withdraw this application?', 'The application leaves active review but remains in its recorded history.', 'Withdraw application', true)) return;
       var payload = { id: record.id };
@@ -955,8 +1415,7 @@
       var kind = button.dataset.opsTransition, recordId = button.dataset.id, status = button.dataset.status;
       var selector = kind === 'application' ? '[data-decision-note="' + CSS.escape(recordId) + '"]' : kind === 'booking' ? '[data-booking-note="' + CSS.escape(recordId) + '"]' : '[data-report-note="' + CSS.escape(recordId) + '"]';
       var noteField = runtime.root.querySelector(selector), note = text(noteField && noteField.value);
-      var source = kind === 'application' ? runtime.snapshot.applications : kind === 'booking' ? runtime.snapshot.bookings : runtime.snapshot.reports;
-      var record = source.find(function (item) { return String(item.id) === String(recordId); });
+      var record = operationalRecord(kind === 'application' ? 'applications' : kind === 'booking' ? 'bookings' : 'reports', recordId);
       if (!record) return;
       if (kind === 'application') {
         var missingField = runtime.root.querySelector('[data-missing-items="' + CSS.escape(recordId) + '"]');
@@ -984,9 +1443,9 @@
       if (status === 'dismissed' && !await confirmAction('Dismiss this report?', 'The resolution remains recorded and the report closes without suspending the vendor.', 'Dismiss report', true)) return;
       await mutate('report.transition', { id: record.id, version: record.version, status: status, resolution: note }, button, label(status) + ' saved.');
     }); });
-    var readAll = runtime.root.querySelector('[data-ops-read-all]'); if (readAll) readAll.addEventListener('click', async function () { var unreadIds = runtime.snapshot.notifications.filter(function (item) { return !item.readAt && item.read !== true; }).map(function (item) { return item.id; }); if (!unreadIds.length) return; await mutate('notification.read-all', { ids: unreadIds }, readAll, 'All visible notifications marked read.'); });
-    runtime.root.querySelectorAll('[data-ops-resolve-inquiry]').forEach(function (button) { button.addEventListener('click', async function () { var item = runtime.snapshot.partners.concat(runtime.snapshot.threads).find(function (candidate) { return String(candidate.id) === String(button.dataset.opsResolveInquiry); }); if (!item) return; var resolution = await inquiryResolutionDialog(item); if (!resolution) return; await mutate('staff.inquiry.resolve', { id: item.id, version: item.version, status: resolution.status, resolution: resolution.resolution }, button, 'Internal inquiry resolution saved. No outbound message was sent.'); }); });
-    runtime.root.querySelectorAll('[data-ops-note-inquiry]').forEach(function (button) { button.addEventListener('click', async function () { var item = runtime.snapshot.partners.find(function (candidate) { return String(candidate.id) === String(button.dataset.opsNoteInquiry); }); if (!item) return; var body = await internalNoteDialog(text(item.organization, label(item.kind || 'support') + ' inquiry')); if (!body) return; await mutate('staff.inquiry.note', { id: item.id, body: body }, button, 'Internal note saved. No outbound reply was sent.'); }); });
+    var readAll = runtime.root.querySelector('[data-ops-read-all]'); if (readAll) readAll.addEventListener('click', async function () { var unreadIds = resourceItems('notifications', runtime.snapshot.notifications).filter(function (item) { return !item.readAt && item.read !== true; }).map(function (item) { return item.id; }); if (!unreadIds.length) return; await mutate('notification.read-all', { ids: unreadIds }, readAll, 'All visible notifications marked read.'); });
+    runtime.root.querySelectorAll('[data-ops-resolve-inquiry]').forEach(function (button) { button.addEventListener('click', async function () { var item = operationalRecord('inquiries', button.dataset.opsResolveInquiry); if (!item) return; var resolution = await inquiryResolutionDialog(item); if (!resolution) return; await mutate('staff.inquiry.resolve', { id: item.id, version: item.version, status: resolution.status, resolution: resolution.resolution }, button, 'Internal inquiry resolution saved. No outbound message was sent.'); }); });
+    runtime.root.querySelectorAll('[data-ops-note-inquiry]').forEach(function (button) { button.addEventListener('click', async function () { var item = operationalRecord('inquiries', button.dataset.opsNoteInquiry); if (!item) return; var body = await internalNoteDialog(text(item.organization, label(item.kind || 'support') + ' inquiry')); if (!body) return; await mutate('staff.inquiry.note', { id: item.id, body: body }, button, 'Internal note saved. No outbound reply was sent.'); }); });
     runtime.root.querySelectorAll('[data-ops-edit-staff]').forEach(function (button) { button.addEventListener('click', async function () { var member = runtime.snapshot.staff.find(function (item) { return item.issuer === button.dataset.issuer && item.subject === button.dataset.subject; }); if (!member) return; var change = await staffAccessDialog(member); if (!change) return; await mutate('staff.member.update', { issuer: member.issuer, subject: member.subject, role: change.role, marketScopes: array(change.marketScopes), status: change.status }, button, 'Staff access updated and recorded.'); }); });
     runtime.root.querySelectorAll('[data-ops-approve-invite]').forEach(function (button) { button.addEventListener('click', async function () { if (!await confirmAction('Approve this verified applicant?', 'This grants the invitation role and market scopes to the accepted account.', 'Grant staff access', false)) return; await mutate('staff.invite.approve', { id: button.dataset.opsApproveInvite }, button, 'Staff access approved.'); }); });
     runtime.root.querySelectorAll('[data-ops-moderate-vendor]').forEach(function (button) { button.addEventListener('click', async function () { var status = button.dataset.status === 'active' ? 'active' : 'suspended'; var reason = await reasonDialog(status === 'active' ? 'Reinstate this vendor profile?' : 'Suspend this vendor profile?', status === 'active' ? 'Reinstatement returns an otherwise publishable profile to active status. The reason is recorded.' : 'Suspension removes the vendor from active public publishing. The report remains separate until it is resolved or dismissed.', status === 'active' ? 'Reinstate profile' : 'Suspend profile'); if (!reason) return; await mutate('staff.vendor.moderate', { publicId: button.dataset.opsModerateVendor, status: status, reason: reason }, button, 'Vendor profile ' + (status === 'active' ? 'reinstated' : 'suspended') + ' and recorded.'); }); });
@@ -999,12 +1458,120 @@
     var signout = runtime.root.querySelector('[data-ops-signout]'); if (signout) signout.addEventListener('click', async function () { setPending(signout, true); try { await window.FSMAuth.signOut(); window.location.hash = 'workspace'; } catch (error) { announce(error.message, 'error'); setPending(signout, false); } });
   }
 
+  function downloadTextFile(content, mime, filename) {
+    var url = URL.createObjectURL(new Blob([content], { type: mime + ';charset=utf-8' }));
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
+  }
+
+  function rowsToCsv(rows, forcedKeys) {
+    var keys = forcedKeys || Array.from(new Set(rows.flatMap(function (row) { return Object.keys(row); }))).filter(function (key) {
+      return rows.every(function (row) { return row[key] == null || typeof row[key] !== 'object'; });
+    });
+    return [keys.map(csvCell).join(',')].concat(rows.map(function (row) { return keys.map(function (key) { return csvCell(row[key]); }).join(','); })).join('\r\n');
+  }
+
+  async function fetchAllMatchingRows(resource, filters, accountKey, maxRows) {
+    var cursor = '';
+    var rows = [];
+    var expectedTotal = null;
+    var seenCursors = new Set();
+    var seenIds = new Set();
+    maxRows = maxRows || 10000;
+    for (var page = 0; page < 100; page += 1) {
+      var data = await request('GET', API_PATH + '?' + buildResourceQuery(resource, filters, cursor, 100));
+      if (runtime.authUserKey !== accountKey) throw new Error('The signed-in account changed while records were loading.');
+      var pageInfo = data.pageInfo && typeof data.pageInfo === 'object' ? data.pageInfo : {};
+      if (expectedTotal === null) {
+        expectedTotal = Number(pageInfo.total);
+        if (Number.isFinite(expectedTotal) && expectedTotal > maxRows) throw new Error('This filter matches ' + expectedTotal + ' records. Narrow the filters below ' + maxRows + ' records.');
+      }
+      if (Number(pageInfo.total) !== expectedTotal) throw new Error('The matching record count changed while pages were loading. Try again for a complete result.');
+      var pageRows = normaliseResourceItems(resource, data.items);
+      pageRows.forEach(function (row) {
+        if (!row.id) return;
+        if (seenIds.has(String(row.id))) throw new Error('A record appeared on more than one page. Try again for a complete result.');
+        seenIds.add(String(row.id));
+      });
+      rows = rows.concat(pageRows);
+      if (rows.length > maxRows) throw new Error('The result exceeded ' + maxRows + ' records. Narrow the filters and try again.');
+      if (!pageInfo.hasMore) break;
+      if (!pageInfo.nextCursor || seenCursors.has(pageInfo.nextCursor)) throw new Error('The server did not provide a safe next page. Try again.');
+      seenCursors.add(pageInfo.nextCursor);
+      cursor = pageInfo.nextCursor;
+      if (page === 99) throw new Error('The result reached its 100-page safety limit. Narrow the filters and try again.');
+    }
+    if (Number.isFinite(expectedTotal) && rows.length !== expectedTotal) throw new Error('The matching record count changed while pages were loading. Try again for a complete result.');
+    if (runtime.authUserKey !== accountKey) throw new Error('The signed-in account changed while records were loading.');
+    return { rows: rows, total: expectedTotal };
+  }
+
+  async function exportMatchingResource(resource, button) {
+    var state = resourceState(resource);
+    var filters = cleanFilters(Object.assign({}, state.filters));
+    var selectedOccurrenceRecord = state.occurrence || occurrenceById(state.filters.occurrenceId);
+    var selectedOccurrence = selectedOccurrenceRecord ? Object.assign({}, selectedOccurrenceRecord) : null;
+    var accountKey = runtime.authUserKey;
+    setPending(button, true);
+    try {
+      var complete = await fetchAllMatchingRows(resource, filters, accountKey, 10000);
+      var rows = complete.rows;
+      if (!rows.length) { announce('No records match the current filters, so no file was created.', 'error'); return; }
+      var keys;
+      if (resource === 'roster') {
+        var occurrence = selectedOccurrence || {};
+        rows = rows.map(function (row) { return { marketDate: occurrence.date || '', marketName: occurrence.name || '', venue: occurrence.venue || '', slotNumber: row.slotNumber, businessName: row.businessName, publicId: row.publicId, boothSize: row.boothSize, status: row.status }; });
+        keys = ['marketDate', 'marketName', 'venue', 'slotNumber', 'businessName', 'publicId', 'boothSize', 'status'];
+      }
+      downloadTextFile(rowsToCsv(rows, keys), 'text/csv', 'four-seasons-' + resource + '-matching-' + new Date().toISOString().slice(0, 10) + '.csv');
+      announce('Downloaded ' + rows.length + ' rows returned across all matching pages for this authorized role. This is not a transactional snapshot.', 'success');
+    } catch (error) {
+      announce((error.message || 'The complete filtered export could not be created.') + ' No partial file was created.', 'error');
+    } finally { setPending(button, false); }
+  }
+
+  async function printMatchingRoster(button) {
+    var state = resourceState('roster');
+    var filters = cleanFilters(Object.assign({}, state.filters));
+    var occurrenceRecord = state.occurrence || occurrenceById(filters.occurrenceId);
+    var occurrence = occurrenceRecord ? Object.assign({}, occurrenceRecord) : null;
+    if (!filters.occurrenceId || !occurrence) { announce('Choose a market day before printing.', 'error'); return; }
+    var accountKey = runtime.authUserKey;
+    var sheet = null;
+    setPending(button, true);
+    try {
+      var complete = await fetchAllMatchingRows('roster', filters, accountKey, 10000);
+      var rows = complete.rows;
+      if (!rows.length) { announce('No roster rows match the current filters, so nothing was printed.', 'error'); return; }
+      var filterNote = [filters.status ? 'Arrival: ' + label(filters.status) : '', filters.q ? 'Search: ' + filters.q : ''].filter(Boolean).join(' · ');
+      sheet = document.createElement('section');
+      sheet.className = 'ops-print-roster-sheet';
+      sheet.setAttribute('aria-hidden', 'true');
+      sheet.innerHTML = '<div class="ops-print-roster-title"><span>FOUR SEASONS MARKETS · MARKET-DAY ROSTER</span><h1>' + escapeHTML(occurrenceName(occurrence)) + '</h1><p>' + escapeHTML(localDate(occurrenceDate(occurrence))) + (occurrenceHours(occurrence) ? ' · ' + escapeHTML(occurrenceHours(occurrence)) : '') + ' · ' + escapeHTML(text(occurrence.venue, 'Venue not supplied')) + '</p><strong>' + rows.length + ' MATCHING VENDOR' + (rows.length === 1 ? '' : 'S') + '</strong>' + (filterNote ? '<small>' + escapeHTML(filterNote) + '</small>' : '') + '</div><table><thead><tr><th>Slot</th><th>Business</th><th>Public ID</th><th>Booth</th><th>Arrival</th></tr></thead><tbody>' + rows.map(function (row) { return '<tr><td>' + escapeHTML(rosterSlot(row.slotNumber)) + '</td><td>' + escapeHTML(text(row.businessName, 'Vendor')) + '</td><td>' + escapeHTML(text(row.publicId, '—')) + '</td><td>' + escapeHTML(text(row.boothSize, '—')) + '</td><td>' + escapeHTML(label(row.status)) + '</td></tr>'; }).join('') + '</tbody></table>';
+      runtime.root.appendChild(sheet);
+      runtime.root.classList.add('is-printing-roster');
+      window.print();
+      announce('Prepared all ' + rows.length + ' matching roster rows returned across the authorized pages for the print dialog.', 'success');
+    } catch (error) {
+      announce((error.message || 'The complete roster could not be prepared.') + ' Nothing was printed.', 'error');
+    } finally {
+      if (runtime.root) runtime.root.classList.remove('is-printing-roster');
+      if (sheet) sheet.remove();
+      setPending(button, false);
+    }
+  }
+
   function exportLocal(kind) {
     var list = kind === 'full' ? runtime.snapshot.raw : runtime.snapshot[kind] || [];
     var content, mime, extension;
     if (kind === 'full') { content = JSON.stringify(list, null, 2); mime = 'application/json'; extension = 'json'; }
-    else { var rows = array(list); var keys = Array.from(new Set(rows.flatMap(function (row) { return Object.keys(row); }))).filter(function (key) { return typeof (rows[0] || {})[key] !== 'object'; }); var csvCell = function (value) { var cell = String(value == null ? '' : value); if (/^[=+\-@]/.test(cell.trimStart())) cell = "'" + cell; return '"' + cell.replace(/"/g, '""') + '"'; }; content = [keys.map(csvCell).join(',')].concat(rows.map(function (row) { return keys.map(function (key) { return csvCell(row[key]); }).join(','); })).join('\r\n'); mime = 'text/csv'; extension = 'csv'; }
-    var url = URL.createObjectURL(new Blob([content], { type: mime + ';charset=utf-8' })); var link = document.createElement('a'); link.href = url; link.download = 'four-seasons-' + kind + '-' + new Date().toISOString().slice(0,10) + '.' + extension; document.body.appendChild(link); link.click(); link.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 3000); announce('Export downloaded from the records currently visible to this account.', 'success');
+    else { var rows = array(list); content = rowsToCsv(rows); mime = 'text/csv'; extension = 'csv'; }
+    downloadTextFile(content, mime, 'four-seasons-' + kind + '-' + new Date().toISOString().slice(0,10) + '.' + extension); announce('Export downloaded from the records currently visible to this account.', 'success');
   }
 
   async function downloadAccountFile(fileId, button) {
@@ -1040,11 +1607,15 @@
         var nextKey = state.user && state.user.userKey || '';
         var changed = runtime.authUserKey !== nextKey;
         if (changed) {
+          Object.keys(runtime.resources).forEach(function (key) { if (runtime.resources[key].controller) runtime.resources[key].controller.abort(); });
           runtime.authUserKey = nextKey;
           runtime.snapshot = null;
           runtime.staffAccessSeen = false;
           runtime.latestBackup = null;
           runtime.backupPreview = null;
+          runtime.resources = {};
+          runtime.home = { loading: false, loaded: false, error: '', results: {} };
+          runtime.repeatPreview = null;
           runtime.busy = false;
           runtime.loading = false;
           runtime.requestId += 1;
@@ -1062,4 +1633,13 @@
 
   window.renderOperationsApp = renderOperationsApp;
   window.initOperationsApp = initOperationsApp;
+  window.FSMOperationsLogic = Object.freeze({
+    buildResourceQuery: buildResourceQuery,
+    cleanFilters: cleanFilters,
+    upcomingOccurrences: upcomingOccurrences,
+    csvCell: csvCell,
+    rowsToCsv: rowsToCsv,
+    parseRepeatDates: parseRepeatDates,
+    rosterSlot: rosterSlot
+  });
 })();

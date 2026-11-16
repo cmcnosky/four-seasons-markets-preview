@@ -6,6 +6,8 @@
   const LOCAL_LANGUAGE = 'fsm-customer-language-v1';
   const LOCAL_SCHEDULE = 'fsm-public-schedule-cache-v1';
   const RESEARCH_CHECKED_AT = '2026-11-03';
+  const OFFICIAL_SCHEDULE = 'https://www.fourseasonsmarkets.com/?sct=events';
+  const OFFICIAL_CONTACT = 'https://www.fourseasonsmarkets.com/?sct=contact';
   const API_ORIGIN = () => String(window.FSM_API_ORIGIN || '').replace(/\/$/, '');
   const api = path => `${API_ORIGIN()}${path}`;
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -53,7 +55,7 @@
     en: {
       language: 'Español', near: 'Near me / ZIP', date: 'When', anyDate: 'Any published date',
       today: 'Today', weekend: 'This weekend', pick: 'Pick a date', list: 'List', map: 'Area view',
-      approximate: 'Approximate straight-line distance from', noNearby: 'No exact match. Here are the nearest published markets.',
+      approximate: 'Approximate straight-line distance from', noNearby: 'No exact match. Here are the nearest researched market venues.',
       status: 'Published schedule status', checked: 'Schedule record', unknown: 'No current schedule update has been published here yet.',
       follow: 'Follow for updates', following: 'Following', calendar: 'Add this preview calendar',
       access: 'Visit essentials', help: 'Get help', partner: 'Bring a market to your property'
@@ -61,7 +63,7 @@
     es: {
       language: 'English', near: 'Cerca de mí / código postal', date: 'Cuándo', anyDate: 'Cualquier fecha publicada',
       today: 'Hoy', weekend: 'Este fin de semana', pick: 'Elegir fecha', list: 'Lista', map: 'Vista del área',
-      approximate: 'Distancia aproximada en línea recta desde', noNearby: 'No hay una coincidencia exacta. Estos son los mercados publicados más cercanos.',
+      approximate: 'Distancia aproximada en línea recta desde', noNearby: 'No hay una coincidencia exacta. Estos son los lugares de mercado investigados más cercanos.',
       status: 'Estado publicado del calendario', checked: 'Registro del calendario', unknown: 'Todavía no hay una actualización actual del calendario publicada aquí.',
       follow: 'Seguir para recibir actualizaciones', following: 'Siguiendo', calendar: 'Añadir este calendario de vista previa',
       access: 'Información para la visita', help: 'Obtener ayuda', partner: 'Llevar un mercado a su propiedad'
@@ -75,6 +77,7 @@
     scheduleUpdatedAt: null,
     scheduleSourceCheckedAt: null,
     scheduleResearchOnly: false,
+    scheduleSourceOnly: false,
     scheduleLastSuccessAt: null,
     scheduleCached: false,
     publicLoaded: false,
@@ -113,8 +116,8 @@
     return sanitizeSaved(parsed.items);
   }
   function savedExport(items) { return JSON.stringify({ format: 'fsm-saved-v1', exportedAt: new Date().toISOString(), items: sanitizeSaved(items) }, null, 2); }
-  function currentCentralDate() {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  function currentCentralDate(now = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
   }
   function weekendDates(baseValue = `${currentCentralDate()}T12:00:00-06:00`) {
     const instant = new Date(baseValue);
@@ -131,9 +134,14 @@
       .filter(item => (item.marketId || item.market_id) === marketId)
       .sort((a, b) => String(a.date || a.startsAt || '').localeCompare(String(b.date || b.startsAt || '')));
   }
+  function isCurrentDatedOccurrence(item, now = new Date()) {
+    if (!item || typeof item.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(item.date)) return false;
+    return item.date >= currentCentralDate(now);
+  }
   function occurrenceFor(marketId, preferredId = '') {
     const items = occurrencesFor(marketId);
-    return items.find(item => item.id === preferredId) || items.find(item => String(item.date || '').localeCompare(currentCentralDate()) >= 0) || items.at(-1) || null;
+    const preferred = preferredId ? items.find(item => item.id === preferredId && isCurrentDatedOccurrence(item)) : null;
+    return preferred || items.find(item => isCurrentDatedOccurrence(item)) || null;
   }
   function timeLabel(value, timeZone = 'America/Chicago') {
     if (!value) return '';
@@ -142,18 +150,24 @@
     return Number.isNaN(date.valueOf()) ? String(value) : new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone }).format(date);
   }
   function occurrenceStatus(item) {
+    if (!item) return { label: state.language === 'es' ? 'FECHA NO PUBLICADA' : 'DATE NOT PUBLISHED', className: 'is-unconfirmed' };
     const status = String(item?.status || '').toLowerCase();
     if (status === 'cancelled') return { label: state.language === 'es' ? 'CANCELADO' : 'CANCELLED', className: 'is-cancelled' };
     if (status === 'delayed') return { label: state.language === 'es' ? 'RETRASADO' : 'DELAYED', className: 'is-delayed' };
     if (status === 'scheduled') return { label: state.language === 'es' ? 'PROGRAMADO' : 'SCHEDULED', className: 'is-scheduled' };
     return { label: state.language === 'es' ? 'LISTADO PUBLICADO' : 'PUBLISHED LISTING', className: 'is-unconfirmed' };
   }
+  function detailDateHeading(item) {
+    return String(item?.status || '').toLowerCase() === 'cancelled'
+      ? (state.language === 'es' ? 'Fecha indicada' : 'Listed date')
+      : (state.language === 'es' ? 'Fecha publicada' : 'Published date');
+  }
   function cardMarket(market) {
     const occurrence=market.selectedOccurrence||occurrenceFor(market.id);
-    if(!occurrence)return{...market,href:`#market/${market.id}`,status:'RESEARCHED LISTING'};
+    if(!occurrence)return{...market,date:'',dateText:state.language==='es'?'Próxima fecha no publicada':'Next date not published',day:state.language==='es'?'Guía del lugar':'Venue guide',hours:state.language==='es'?'El horario varía según la fecha':'Hours vary by published date',href:`#market/${market.id}`,status:state.language==='es'?'LUGAR INVESTIGADO':'RESEARCHED VENUE',hasCurrentDate:false};
     const day=occurrence.date?new Intl.DateTimeFormat('en-US',{weekday:'long',timeZone:'UTC'}).format(new Date(`${occurrence.date}T12:00:00Z`)):market.day;
     const status=occurrenceStatus(occurrence).label;
-    return{...market,day,date:occurrence.date||market.date,venue:occurrence.venue||market.venue,address:occurrence.address||market.address,hours:occurrence.startsAt&&occurrence.endsAt?`${timeLabel(occurrence.startsAt,occurrence.timeZone)}–${timeLabel(occurrence.endsAt,occurrence.timeZone)}`:market.hours,href:`#market/${market.id}?occurrence=${encodeURIComponent(occurrence.id)}`,status:state.scheduleCached?`${state.language==='es'?'ÚLTIMO GUARDADO':'LAST SAVED'} · ${status}`:status,occurrence};
+    return{...market,day,date:occurrence.date,dateText:'',venue:occurrence.venue||market.venue,address:occurrence.address||market.address,hours:occurrence.startsAt&&occurrence.endsAt?`${timeLabel(occurrence.startsAt,occurrence.timeZone)}–${timeLabel(occurrence.endsAt,occurrence.timeZone)}`:(state.language==='es'?'Horario no publicado':'Hours not published'),href:`#market/${market.id}?occurrence=${encodeURIComponent(occurrence.id)}`,status:state.scheduleCached?`${state.language==='es'?'ÚLTIMO GUARDADO':'LAST SAVED'} · ${status}`:status,occurrence,hasCurrentDate:true};
   }
   function updatedLabel(value) {
     if (!value) return t('unknown');
@@ -172,6 +186,7 @@
   }
   function setScheduleMetadata(occurrences, updatedAt) {
     state.scheduleResearchOnly = occurrences.length > 0 && occurrences.every(item => String(item.status || '') === 'published_listing');
+    state.scheduleSourceOnly = occurrences.length > 0 && occurrences.every(item => Boolean(item.sourceCheckedAt || item.source_checked_at));
     state.scheduleSourceCheckedAt = occurrences.reduce((latest, item) => {
       const value = item.sourceCheckedAt || item.source_checked_at || '';
       return String(value) > String(latest || '') ? value : latest;
@@ -183,10 +198,17 @@
     if (state.scheduleCached) return state.language === 'es'
       ? `Copia guardada; no es una comprobación actual. Última actualización correcta: ${lastSuccessLabel(state.scheduleLastSuccessAt)}.`
       : `Saved schedule; not a current check. Last successful refresh: ${lastSuccessLabel(state.scheduleLastSuccessAt)}.`;
-    if (state.scheduleResearchOnly && state.scheduleSourceCheckedAt) return state.language === 'es'
-      ? `Fuente investigada revisada: ${lastSuccessLabel(state.scheduleSourceCheckedAt)}.`
-      : `Researched source checked: ${lastSuccessLabel(state.scheduleSourceCheckedAt)}.`;
+    if (state.scheduleSourceCheckedAt && (state.scheduleSourceOnly || state.scheduleResearchOnly || !state.scheduleUpdatedAt)) return state.language === 'es'
+      ? `Fuente revisada: ${lastSuccessLabel(state.scheduleSourceCheckedAt)}.`
+      : `Source checked: ${lastSuccessLabel(state.scheduleSourceCheckedAt)}.`;
     if (state.scheduleUpdatedAt) return updatedLabel(state.scheduleUpdatedAt);
+    if (state.publicLoaded && !state.publicError) return state.language === 'es'
+      ? `La comprobación en vivo terminó; no hay próximas fechas publicadas en esta vista previa.`
+      : `Live schedule check completed; no upcoming dates are published in this preview.`;
+    if (state.publicError) return state.language === 'es'
+      ? `No se pudo comprobar el calendario en vivo y no se muestran fechas guardadas.`
+      : `The live schedule could not be checked, and no saved dates are being shown.`;
+    if (!state.publicLoaded) return state.language === 'es' ? 'Comprobando el calendario en vivo…' : 'Checking the live schedule…';
     return state.language === 'es'
       ? `Información investigada revisada el ${RESEARCH_CHECKED_AT}; no hay una actualización actual del calendario.`
       : `Researched information checked ${RESEARCH_CHECKED_AT}; no current schedule update is available.`;
@@ -219,12 +241,12 @@
     const validDates = criteria.dateFilter === 'today' ? [criteria.todayDate || currentCentralDate()] : criteria.dateFilter === 'weekend' ? (criteria.weekend || weekendDates()) : criteria.dateFilter === 'pick' && criteria.specificDate ? [criteria.specificDate] : [];
     if (criteria.dateFilter) {
       if (validDates.length) candidates = candidates.filter(market => {
-        const occurrenceDates = occurrencesFor(market.id).map(item => item.date).filter(Boolean);
-        return validDates.some(date => occurrenceDates.length ? occurrenceDates.includes(date) : market.date === date);
+        const occurrenceDates = occurrencesFor(market.id).filter(item => isCurrentDatedOccurrence(item)).map(item => item.date);
+        return validDates.some(date => occurrenceDates.includes(date));
       });
     }
     const items = candidates.map(market => {
-      const occurrences = occurrencesFor(market.id);
+      const occurrences = occurrencesFor(market.id).filter(item => isCurrentDatedOccurrence(item));
       const selectedOccurrence = validDates.length ? occurrences.find(item => validDates.includes(item.date)) : occurrenceFor(market.id);
       return { ...marketWithDistance(market, place), selectedOccurrence };
     });
@@ -244,7 +266,7 @@
     const result = document.querySelector('#market-results');
     if (!count || !result) return;
     count.textContent = `${items.length} ${items.length === 1 ? (state.language === 'es' ? 'mercado' : 'market') : (state.language === 'es' ? 'mercados' : 'markets')} ${state.language === 'es' ? 'encontrados' : 'found'} · ${scheduleSummary()}`;
-    const explanation = nearestMode ? `<div class="customer-distance-note" role="status"><strong>${escapeHtml(t('noNearby'))}</strong><span>${escapeHtml(t('approximate'))} ${escapeHtml(place.label)}. Distances use city-center estimates, not driving miles.</span></div>` : unsupportedZip ? `<div class="customer-distance-note" role="status"><strong>Distance is not available for ZIP ${escapeHtml(query)}.</strong><span>Showing all matching published dates. Search a listed market city or market ZIP for approximate distance.</span></div>` : '';
+    const explanation = nearestMode ? `<div class="customer-distance-note" role="status"><strong>${escapeHtml(t('noNearby'))}</strong><span>${escapeHtml(t('approximate'))} ${escapeHtml(place.label)}. Distances use city-center estimates, not driving miles.</span></div>` : unsupportedZip ? `<div class="customer-distance-note" role="status"><strong>Distance is not available for ZIP ${escapeHtml(query)}.</strong><span>Showing the DFW venue guide. Search a listed market city or market ZIP for approximate distance; use a date filter only for current dated records.</span></div>` : '';
     const cards = items.map(market => {
       const rendered = renderCard(market);
       if (market.approximateMiles === null) return rendered;
@@ -268,36 +290,38 @@
     const xy=geo=>({x:40+(geo.lng-minLng)/(maxLng-minLng)*640,y:35+(maxLat-geo.lat)/(maxLat-minLat)*330});
     const marketPoints=points.map(({item,geo})=>{const point=xy(geo);return `<a href="#market/${escapeHtml(item.id)}${item.selectedOccurrence?.id?`?occurrence=${encodeURIComponent(item.selectedOccurrence.id)}`:''}" aria-label="${escapeHtml(item.short)}"><circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="9"></circle><text x="${(point.x+13).toFixed(1)}" y="${(point.y+4).toFixed(1)}">${escapeHtml(item.short)}</text></a>`;}).join('');
     const origin=place?(()=>{const point=xy(place);return `<g class="customer-map-origin"><circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="7"></circle><text x="${(point.x+12).toFixed(1)}" y="${(point.y+4).toFixed(1)}">${escapeHtml(place.label)}</text></g>`;})():'';
-    return `<figure class="customer-area-map"><svg role="img" aria-labelledby="customer-map-title customer-map-desc" viewBox="0 0 720 400"><title id="customer-map-title">Relative locations of published markets</title><desc id="customer-map-desc">A coordinate plot showing approximate relative positions. It is not a street map. Each market name opens its details and directions link.</desc><g class="customer-map-grid" aria-hidden="true"><path d="M40 115H680M40 205H680M40 295H680M200 35V365M360 35V365M520 35V365"></path></g>${marketPoints}${origin}<g class="customer-map-north"><path d="M680 50v35m0-35-8 13m8-13 8 13"></path><text x="674" y="44">N</text></g></svg><figcaption>Approximate relative positions from published addresses · not a street map. Open a market for turn-by-turn directions.</figcaption></figure>`;
+    return `<figure class="customer-area-map"><svg role="img" aria-labelledby="customer-map-title customer-map-desc" viewBox="0 0 720 400"><title id="customer-map-title">Relative locations of researched market venues</title><desc id="customer-map-desc">A coordinate plot showing approximate relative positions. It is not a street map or confirmation of a market date. Each market name opens its details and directions link.</desc><g class="customer-map-grid" aria-hidden="true"><path d="M40 115H680M40 205H680M40 295H680M200 35V365M360 35V365M520 35V365"></path></g>${marketPoints}${origin}<g class="customer-map-north"><path d="M680 50v35m0-35-8 13m8-13 8 13"></path><text x="674" y="44">N</text></g></svg><figcaption>Approximate relative positions from researched addresses · not a street map or a confirmed date. Open a market for turn-by-turn directions.</figcaption></figure>`;
   }
 
   function statusNote() {
+    const hasCurrentDatedRecord = state.occurrences.some(item => isCurrentDatedOccurrence(item));
     const copy = state.scheduleCached
       ? `${scheduleSummary()} ${state.language === 'es' ? 'El estado, la lista y las fechas guardadas pueden haber cambiado. La disponibilidad de reservas no se muestra desde la copia guardada; confirme con el organizador.' : 'Saved status, lineup, and dates may have changed. Booking availability is not shown from the saved copy; confirm with the organizer.'}`
-      : state.scheduleUpdatedAt
+      : hasCurrentDatedRecord
       ? `${scheduleSummary()} ${state.language === 'es' ? 'Revise cada mercado para ver el estado programado, retrasado o cancelado y su lista confirmada. Esta vista previa no demuestra por sí sola la autorización del organizador; verifique la fuente del organizador antes de viajar.' : 'Check each market for scheduled, delayed, or cancelled status and its confirmed lineup. This preview does not by itself prove organizer authorization; verify the organizer source before traveling.'}`
-      : `${state.language === 'es' ? `Estos listados investigados se revisaron el ${RESEARCH_CHECKED_AT}. Todavía no hay una actualización actual publicada; los horarios, el clima y las listas pueden cambiar.` : `These researched listings were checked ${RESEARCH_CHECKED_AT}. A current schedule update has not been published here yet; hours, weather, and lineups can change.`}`;
-    return `<div class="notice"><span aria-hidden="true">ⓘ</span><p><strong>A little planning goes a long way.</strong> ${escapeHtml(copy)} <a href="#help">Ask the market team ↗</a></p></div>`;
+      : `${scheduleSummary()} ${state.language === 'es' ? 'Los lugares investigados siguen disponibles para descubrirlos, pero no confirman una fecha, hora ni lista futura.' : 'Researched venues remain available for discovery, but they do not confirm a future date, time, or lineup.'}`;
+    return `<div class="notice"><span aria-hidden="true">ⓘ</span><p><strong>A little planning goes a long way.</strong> ${escapeHtml(copy)} <a href="${OFFICIAL_SCHEDULE}" target="_blank" rel="noopener">Check the official schedule ↗</a></p></div>`;
   }
 
   function homeSchedule(markets) {
-    if (!state.occurrences.length) return '';
-    const upcoming = state.occurrences.filter(item => !item.date || item.date >= currentCentralDate());
+    const upcoming = state.occurrences.filter(item => isCurrentDatedOccurrence(item));
     const rows = upcoming
       .sort((a, b) => `${a.date || ''}${a.startsAt || ''}`.localeCompare(`${b.date || ''}${b.startsAt || ''}`))
       .slice(0, 8)
       .map((occurrence, index) => {
         const market = markets.find(item => item.id === occurrence.marketId);
         const status = occurrenceStatus(occurrence);
-        const date = occurrence.date ? new Intl.DateTimeFormat(state.language === 'es' ? 'es-US' : 'en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${occurrence.date}T12:00:00Z`)) : 'Date pending';
-        const hours=occurrence.startsAt&&occurrence.endsAt?`${timeLabel(occurrence.startsAt,occurrence.timeZone)}–${timeLabel(occurrence.endsAt,occurrence.timeZone)}`:market?.hours||'';
+        const date = new Intl.DateTimeFormat(state.language === 'es' ? 'es-US' : 'en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${occurrence.date}T12:00:00Z`));
+        const hours=occurrence.startsAt&&occurrence.endsAt?`${timeLabel(occurrence.startsAt,occurrence.timeZone)}–${timeLabel(occurrence.endsAt,occurrence.timeZone)}`:(state.language==='es'?'Horario no publicado':'Hours not published');
         const rowStatus=state.scheduleCached?`${state.language==='es'?'ÚLTIMO GUARDADO':'LAST SAVED'} · ${status.label}`:status.label;
         return `<a class="schedule-row" href="#market/${escapeHtml(occurrence.marketId)}?occurrence=${encodeURIComponent(occurrence.id)}"><span class="row-number">${String(index + 1).padStart(2, '0')}</span><span class="row-city">${escapeHtml(occurrence.name || market?.short || occurrence.marketId)}<small>${escapeHtml(occurrence.venue || market?.venue || '')}</small></span><span class="row-day">${escapeHtml(date)}<small>${escapeHtml(rowStatus)}</small></span><span class="row-hours">${escapeHtml(hours)}</span><span class="row-arrow">↗</span></a>`;
       }).join('');
-    const board=rows||`<div class="empty"><h3>No upcoming dated markets are published yet.</h3><p>Use the market guide for recurring locations and check back for a schedule update.</p></div>`;
-    const calendarLabel = state.scheduleCached ? (state.language === 'es' ? 'Copia guardada · no actual' : 'Saved copy · not current') : (state.language === 'es' ? 'Calendario publicado' : 'Published calendar');
-    const calendarCopy = state.scheduleCached ? scheduleSummary() + (state.language === 'es' ? ' Confirme el estado antes de viajar.' : ' Confirm status before traveling.') : `${scheduleSummary()} ${state.language === 'es' ? 'Los cambios de estado se publican en cada mercado.' : 'Status changes appear on each market page.'}`;
-    return `<section class="schedule-strip customer-schedule-strip${state.scheduleCached ? ' is-cached' : ''}"><div class="wrap"><div class="schedule-label"><span class="eyebrow">${calendarLabel}</span><strong>${upcoming.length}</strong><span>${state.language === 'es' ? 'próximas fechas' : 'upcoming occurrences'}</span></div><div class="customer-strip-copy"><b>${escapeHtml(calendarCopy)}</b>${state.scheduleCached ? `<p>${state.language === 'es' ? 'La disponibilidad de reservas guardada no se muestra.' : 'Saved booking availability is not shown.'}</p>` : ''}</div><a href="#markets" aria-label="View all market details">↗</a></div></section><section class="section wrap customer-home-schedule"><div class="section-head"><div><span class="eyebrow">01 / ${state.language === 'es' ? 'Elija su mercado' : 'Pick your place'}</span><h2>${state.language === 'es' ? 'SU FIN DE SEMANA EMPIEZA AQUÍ.' : 'YOUR WEEKEND STARTS HERE.'}</h2></div><a class="text-link" href="#markets">${state.language === 'es' ? 'Ver todos los mercados' : 'Full market guide'} ↗</a></div>${finder(true)}<div class="schedule-board">${board}</div></section>`;
+    const venueRows = markets.map((market, index) => `<a class="schedule-row is-venue-guide" href="#market/${escapeHtml(market.id)}"><span class="row-number">${String(index + 1).padStart(2, '0')}</span><span class="row-city">${escapeHtml(market.short)}<small>${escapeHtml(market.venue)}</small></span><span class="row-day">${state.language === 'es' ? 'Próxima fecha' : 'Next date'}<small>${state.language === 'es' ? 'No publicada aquí' : 'Not published here'}</small></span><span class="row-hours">${state.language === 'es' ? 'Guía del lugar' : 'Venue guide'}</span><span class="row-arrow">↗</span></a>`).join('');
+    const board=rows||venueRows||`<div class="empty"><h3>${state.language === 'es' ? 'No hay próximas fechas publicadas.' : 'No upcoming dates are published.'}</h3></div>`;
+    const calendarLabel = !state.publicLoaded ? (state.language === 'es' ? 'Comprobando ahora' : 'Checking now') : state.scheduleCached ? (state.language === 'es' ? 'Copia guardada · no actual' : 'Saved copy · not current') : state.publicError ? (state.language === 'es' ? 'Calendario no disponible' : 'Schedule unavailable') : (state.language === 'es' ? 'Calendario publicado' : 'Published calendar');
+    const calendarCopy = `${scheduleSummary()} ${upcoming.length ? (state.language === 'es' ? 'Abra una fecha para ver su estado y lista.' : 'Open a date for its status and lineup.') : (state.language === 'es' ? 'Los lugares investigados aparecen abajo solo para descubrirlos; no confirman una fecha.' : 'Researched venues appear below for discovery only; they do not confirm a date.')}`;
+    const countLabel = upcoming.length ? (state.language === 'es' ? 'registros con fecha' : 'dated records') : (state.language === 'es' ? 'fechas actuales' : 'current dates');
+    return `<section class="schedule-strip customer-schedule-strip${state.scheduleCached ? ' is-cached' : ''}${state.publicError && !state.scheduleCached ? ' is-unavailable' : ''}"><div class="wrap"><div class="schedule-label"><span class="eyebrow">${calendarLabel}</span><strong>${upcoming.length}</strong><span>${countLabel}</span></div><div class="customer-strip-copy"><b>${escapeHtml(calendarCopy)}</b>${state.scheduleCached ? `<p>${state.language === 'es' ? 'La disponibilidad de reservas guardada no se muestra.' : 'Saved booking availability is not shown.'}</p>` : ''}</div><a href="${OFFICIAL_SCHEDULE}" target="_blank" rel="noopener" aria-label="${state.language === 'es' ? 'Ver calendario oficial' : 'View official schedule'}">↗</a></div></section><section class="section wrap customer-home-schedule"><div class="section-head"><div><span class="eyebrow">01 / ${state.language === 'es' ? 'Elija su mercado' : 'Pick your place'}</span><h2>${state.language === 'es' ? 'SU FIN DE SEMANA EMPIEZA AQUÍ.' : 'YOUR WEEKEND STARTS HERE.'}</h2></div><a class="text-link" href="#markets">${state.language === 'es' ? 'Ver todos los mercados' : 'Full market guide'} ↗</a></div>${finder(true)}<div class="schedule-board">${board}</div>${!upcoming.length ? `<div class="customer-current-date-actions"><p>${state.language === 'es' ? 'No use un ritmo semanal como confirmación. Compruebe la fecha y cualquier cancelación antes de salir.' : 'Do not treat a weekly rhythm as confirmation. Check the date and any cancellation before leaving.'}</p><a class="button outline small" href="${OFFICIAL_SCHEDULE}" target="_blank" rel="noopener">${state.language === 'es' ? 'VER CALENDARIO OFICIAL ↗' : 'CHECK OFFICIAL SCHEDULE ↗'}</a></div>` : ''}</section>`;
   }
 
   function schedulePanel(market, preferredId = '') {
@@ -306,13 +330,17 @@
     const lineup = Array.isArray(occurrence?.lineup) ? occurrence.lineup : [];
     const calendarLink = occurrence?.id ? `<a class="button small" href="${escapeHtml(api(`/api/calendar?occurrence=${encodeURIComponent(occurrence.id)}`))}">${t('calendar')} ↗</a>` : '';
     const lineupHeading=state.scheduleCached?(state.language==='es'?'Última lista guardada; puede haber cambiado':'Last saved lineup; may have changed'):(state.language === 'es' ? 'Vendedores confirmados' : 'Confirmed lineup');
-    const occurrenceCheckedAt=occurrence?.status==='published_listing'?(occurrence?.sourceCheckedAt||occurrence?.source_checked_at):(occurrence?.updatedAt||occurrence?.updated_at||state.scheduleUpdatedAt);
-    const occurrenceFreshness=occurrence?.status==='published_listing'?sourceCheckedLabel(occurrenceCheckedAt):updatedLabel(occurrenceCheckedAt||state.scheduleUpdatedAt);
-    const lineupText = lineup.length ? `<p><b>${lineupHeading}:</b> ${lineup.map(item=>escapeHtml(item.name)).join(' · ')} <span>(${escapeHtml(occurrenceFreshness)})</span></p>` : `<p>${state.language === 'es' ? 'Todavía no hay una lista confirmada publicada para esta fecha.' : 'No confirmed lineup has been published for this occurrence yet.'}</p>`;
+    const occurrenceSourceCheckedAt=occurrence?.sourceCheckedAt||occurrence?.source_checked_at||null;
+    const occurrenceCheckedAt=occurrenceSourceCheckedAt||occurrence?.updatedAt||occurrence?.updated_at||state.scheduleUpdatedAt;
+    const occurrenceFreshness=occurrenceSourceCheckedAt?sourceCheckedLabel(occurrenceSourceCheckedAt):updatedLabel(occurrenceCheckedAt||state.scheduleUpdatedAt);
+    const lineupText = occurrence ? (lineup.length ? `<p><b>${lineupHeading}:</b> ${lineup.map(item=>escapeHtml(item.name)).join(' · ')} <span>(${escapeHtml(occurrenceFreshness)})</span></p>` : `<p>${state.language === 'es' ? 'Todavía no hay una lista confirmada publicada para esta fecha.' : 'No confirmed lineup has been published for this occurrence yet.'}</p>`) : `<p>${state.language === 'es' ? 'No se muestra una lista sin una fecha actual publicada.' : 'No lineup is shown without a current published date.'}</p>`;
     const statusHeading = state.scheduleCached ? (state.language === 'es' ? 'Horario guardado · no actual' : 'Saved schedule · not current') : t('status');
     const statusLabel = state.scheduleCached ? `${state.language === 'es' ? 'ÚLTIMO ESTADO GUARDADO' : 'LAST SAVED STATUS'}: ${status.label}` : status.label;
     const staleWarning = state.scheduleCached ? `<p class="customer-stale-warning"><b>${escapeHtml(scheduleSummary())}</b> ${state.language === 'es' ? 'El estado, la lista y las fechas pueden haber cambiado. Confirme antes de viajar.' : 'Status, lineup, and dates may have changed. Confirm before traveling.'}</p>` : '';
-    return `<section class="customer-live-status ${status.className}${state.scheduleCached ? ' is-cached' : ''}" id="customer-live-status" aria-live="polite"><div><span class="eyebrow">${statusHeading}</span><strong>${escapeHtml(statusLabel)}</strong>${staleWarning}<p>${escapeHtml(details || (occurrenceCheckedAt ? occurrenceFreshness : scheduleSummary()))}</p>${lineupText}</div><div class="customer-status-actions"><button class="button outline small" type="button" data-follow="market:${escapeHtml(market.id)}">${isFollowing(`market:${market.id}`) ? t('following') : t('follow')}</button>${calendarLink}</div></section>`;
+    const cancelledGuidance = occurrence && String(occurrence.status).toLowerCase() === 'cancelled'
+      ? `<p><strong>${state.language === 'es' ? 'Esta fecha está cancelada. Consulte el calendario oficial para el próximo evento.' : 'This date is cancelled. Check the official schedule for the next event.'}</strong></p>`
+      : '';
+    return `<section class="customer-live-status ${status.className}${state.scheduleCached ? ' is-cached' : ''}" id="customer-live-status" aria-live="polite"><div><span class="eyebrow">${statusHeading}</span><strong>${escapeHtml(statusLabel)}</strong>${staleWarning}${cancelledGuidance}<p>${escapeHtml(details || (occurrenceCheckedAt ? occurrenceFreshness : scheduleSummary()))}</p>${lineupText}</div><div class="customer-status-actions"><button class="button outline small" type="button" data-follow="market:${escapeHtml(market.id)}">${isFollowing(`market:${market.id}`) ? t('following') : t('follow')}</button>${calendarLink}<a class="button outline small" href="${OFFICIAL_SCHEDULE}" target="_blank" rel="noopener">${state.language === 'es' ? 'Fuente oficial' : 'Official schedule'} ↗</a></div></section>`;
   }
   function essentials(market, preferredId = '') {
     const occurrence = occurrenceFor(market.id, preferredId);
@@ -482,7 +510,7 @@
   function helpPage(params, partner = false) {
     const market = params.get('market') || '';
     const heading = partner ? t('partner') : t('help');
-    return `<section class="page-head wrap"><span class="eyebrow">${partner ? 'Cities · properties · community partners' : 'Questions · access · account help'}</span><h1>${escapeHtml(heading)}.</h1><p>${partner ? 'Tell the operations team about the location and the community you hope to serve.' : 'Send the details once. The market or page you came from will stay attached to the request.'}</p></section><section class="wrap details-layout"><form class="customer-contact-form" data-contact-kind="${partner ? 'partner' : 'support'}"><input type="hidden" name="marketId" value="${escapeHtml(market)}"><div class="field"><label for="customer-contact-name">Name</label><input id="customer-contact-name" name="name" autocomplete="name" required maxlength="100"></div><div class="field"><label for="customer-contact-email">Email</label><input id="customer-contact-email" name="email" type="email" autocomplete="email" required maxlength="254"></div><div class="field"><label for="customer-contact-phone">Phone <span class="fine">(optional)</span></label><input id="customer-contact-phone" name="phone" type="tel" autocomplete="tel" maxlength="30"></div>${partner ? '<div class="field"><label for="customer-contact-property">Property / organization</label><input id="customer-contact-property" name="organization" maxlength="160" required></div><div class="field"><label for="customer-contact-city">City</label><input id="customer-contact-city" name="city" autocomplete="address-level2" maxlength="100" required></div>' : ''}<div class="field"><label for="customer-contact-subject">${partner ? 'What should we know?' : 'How can we help?'}</label><textarea id="customer-contact-subject" name="message" rows="7" minlength="10" maxlength="3000" required></textarea></div><label class="customer-consent"><input type="checkbox" required> I understand this saves my contact details in this independent preview’s staff inbox for review.</label><button class="button" type="submit">SEND REQUEST →</button><p class="fine" data-contact-status role="status"></p></form><aside class="detail-panel"><h3>WHAT HAPPENS NEXT</h3><p>The request is saved in this proposal’s staff inbox. Contact the official organizer directly for current market support. A receipt confirms storage; email delivery is not connected.</p><p class="fine">Do not include payment-card information, passwords, medical information, or government identifiers.</p><a class="text-link" href="#markets">Back to market guide ↗</a></aside></section>`;
+    return `<section class="page-head wrap"><span class="eyebrow">${partner ? 'Cities · properties · community partners' : 'Questions · access · account help'}</span><h1>${escapeHtml(heading)}.</h1><p>${partner ? 'Share a potential property or community partnership, or use the organizer’s current contact channel for an official response.' : 'Choose the official organizer for current market-day questions. Use the preview inbox only for feedback about this proposed site.'}</p><div class="button-row customer-official-contact"><a class="button" href="${OFFICIAL_CONTACT}" target="_blank" rel="noopener">CONTACT THE OFFICIAL ORGANIZER ↗</a><a class="button outline" href="tel:+12815440287">VENDOR INFORMATION · (281) 544-0287</a></div></section><section class="wrap details-layout"><form class="customer-contact-form" data-contact-kind="${partner ? 'partner' : 'support'}"><input type="hidden" name="marketId" value="${escapeHtml(market)}"><div class="field"><label for="customer-contact-name">Name</label><input id="customer-contact-name" name="name" autocomplete="name" required maxlength="100"></div><div class="field"><label for="customer-contact-email">Email</label><input id="customer-contact-email" name="email" type="email" autocomplete="email" required maxlength="254"></div><div class="field"><label for="customer-contact-phone">Phone <span class="fine">(optional)</span></label><input id="customer-contact-phone" name="phone" type="tel" autocomplete="tel" maxlength="30"></div>${partner ? '<div class="field"><label for="customer-contact-property">Property / organization</label><input id="customer-contact-property" name="organization" maxlength="160" required></div><div class="field"><label for="customer-contact-city">City</label><input id="customer-contact-city" name="city" autocomplete="address-level2" maxlength="100" required></div>' : ''}<div class="field"><label for="customer-contact-subject">${partner ? 'What should we know?' : 'Preview feedback'}</label><textarea id="customer-contact-subject" name="message" rows="7" minlength="10" maxlength="3000" required></textarea></div><label class="customer-consent"><input type="checkbox" required> I understand this saves my contact details in this independent preview’s planning inbox, not the organizer’s official contact system.</label><button class="button" type="submit">SEND TO PREVIEW INBOX →</button><p class="fine" data-contact-status role="status"></p></form><aside class="detail-panel"><h3>CHOOSE THE RIGHT PATH</h3><p><strong>Current event, cancellation, vendor fee, or deadline?</strong><br>Use the official organizer contact above.</p><p><strong>Problem with this redesign or a property idea?</strong><br>You may use this preview form. It stores a receipt in the proposal’s staff inbox; email delivery is not connected.</p><p class="fine">Do not include payment-card information, passwords, medical information, or government identifiers.</p><a class="text-link" href="#markets">Back to market guide ↗</a></aside></section>`;
   }
 
   async function submitContact(form) {
@@ -533,6 +561,8 @@
         document.querySelector('.detail-content')?.insertAdjacentHTML('beforeend', essentials(market,preferredId));
         if(occurrence){
           const values=document.querySelectorAll('.detail-list dd');
+          const terms=document.querySelectorAll('.detail-list dt');
+          if(terms[0])terms[0].textContent=detailDateHeading(occurrence);
           if(values[0]&&occurrence.date)values[0].textContent=new Intl.DateTimeFormat(state.language==='es'?'es-US':'en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(`${occurrence.date}T12:00:00Z`));
           if(values[1])values[1].textContent=`${timeLabel(occurrence.startsAt,occurrence.timeZone)}–${timeLabel(occurrence.endsAt,occurrence.timeZone)} · Central Time`;
           if(values[2])values[2].textContent=`${occurrence.venue} · ${occurrence.address}`;
@@ -544,16 +574,6 @@
       }
     }
     if (page === 'saved') window.initDirectory?.('saved');
-    if (page === 'home') {
-      const strip = document.querySelector('.schedule-strip');
-      if (state.occurrences.length && strip) {
-        const originalSchedule = strip.nextElementSibling?.matches('section.section.wrap') ? strip.nextElementSibling : null;
-        strip.insertAdjacentHTML('beforebegin', homeSchedule(window.MARKETS || []));
-        strip.remove(); originalSchedule?.remove();
-      } else if (strip) {
-        strip.insertAdjacentHTML('afterend', `<div class="customer-home-status"><div class="wrap"><span>${state.publicError ? 'Manager status is temporarily unavailable; researched listings remain below.' : updatedLabel(state.scheduleUpdatedAt)}</span><a href="#markets">See market status ↗</a></div></div>`);
-      }
-    }
   }
 
   function directoryChanged(vendors) {
@@ -618,7 +638,8 @@
       normalizedPlace, milesBetween, weekendDates, occurrenceStatus, marketWithDistance, selectMarketItems,
       sanitizeSaved, mergeSaved, removeSaved, parseSavedImport, savedExport, authChanged,
       cardMarket, timeLabel, scheduleSummary, scheduleCachePayload, readScheduleCache, setScheduleMetadata,
-      loadCustomerPreferences, saveFollows, cloudFollow, localFollow
+      loadCustomerPreferences, saveFollows, cloudFollow, localFollow, isCurrentDatedOccurrence, currentCentralDate,
+      detailDateHeading
     }
   };
   loadPublicState();

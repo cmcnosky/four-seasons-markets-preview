@@ -6,7 +6,8 @@ window.MARKETS=[
     "address": "101 S Coit Rd, Richardson, TX 75080",
     "recurrence": "Every Saturday",
     "current_hours": "10:00 AM-2:00 PM",
-    "next_dated_occurrence": "2026-11-07",
+    "last_researched_occurrence": "2026-11-07",
+    "research_checked_at": "2026-11-03",
     "seasonal_hours_evidence": "The organizer's August 22 and September 26, 2026 schedule snapshots list 9:00 AM-1:00 PM; its current November schedule lists 10:00 AM-2:00 PM. The organizer does not publish a durable all-market cutoff rule on the schedule page.",
     "visitor_notes": [
       "Open-air market",
@@ -23,7 +24,7 @@ window.MARKETS=[
     "city": "Richardson",
     "day": "Saturday",
     "hours": "10 AM–2 PM",
-    "date": "2026-11-07",
+    "research_snapshot_date": "2026-11-07",
     "description": "Make a Saturday stop at Dal-Rich Towne Square for produce, pantry staples, and goods from local artisans."
   },
   {
@@ -33,7 +34,8 @@ window.MARKETS=[
     "address": "300 W Front St, Arlington, TX 76011",
     "recurrence": "Every Saturday; the current City of Arlington page describes it as year-round",
     "current_hours": "10:00 AM-2:00 PM",
-    "next_dated_occurrence": "2026-11-07",
+    "last_researched_occurrence": "2026-11-07",
+    "research_checked_at": "2026-11-03",
     "seasonal_hours_evidence": "The organizer's August 22, 2026 schedule snapshot lists 9:00 AM-1:00 PM; its current November schedule and Downtown Arlington's current page list 10:00 AM-2:00 PM.",
     "visitor_notes": [
       "Free entry",
@@ -52,7 +54,7 @@ window.MARKETS=[
     "city": "Arlington",
     "day": "Saturday",
     "hours": "10 AM–2 PM",
-    "date": "2026-11-07",
+    "research_snapshot_date": "2026-11-07",
     "description": "Explore a mix of food and artisan stalls in Downtown Arlington, just west of Rotary Dream Park."
   },
   {
@@ -63,7 +65,8 @@ window.MARKETS=[
     "address": "2540 King Arthur Blvd, Lewisville, TX 75056",
     "recurrence": "First Saturday of each month",
     "current_hours": "10:00 AM-2:00 PM",
-    "next_dated_occurrence": "2026-11-07",
+    "last_researched_occurrence": "2026-11-07",
+    "research_checked_at": "2026-11-03",
     "seasonal_hours_evidence": "The venue published 9:00 AM-1:00 PM for August 1, 2026 and explicitly said fall hours return to 10:00 AM-2:00 PM beginning October 3, 2026.",
     "visitor_notes": [
       "The venue describes handmade and homemade goods, produce, and seasonal finds",
@@ -81,7 +84,7 @@ window.MARKETS=[
     "city": "Lewisville",
     "day": "Saturday",
     "hours": "10 AM–2 PM",
-    "date": "2026-11-07",
+    "research_snapshot_date": "2026-11-07",
     "description": "A first-Saturday gathering at the Village Shops & Plaza, with handmade goods and seasonal finds."
   },
   {
@@ -91,7 +94,8 @@ window.MARKETS=[
     "address": "4721 W Park Blvd, Plano, TX 75093",
     "recurrence": "Every Saturday",
     "current_hours": "10:00 AM-2:00 PM",
-    "next_dated_occurrence": "2026-11-07",
+    "last_researched_occurrence": "2026-11-07",
+    "research_checked_at": "2026-11-03",
     "published_future_occurrences_through": "2026-12-26",
     "seasonal_hours_evidence": "The organizer's August 22 and September 26, 2026 schedule snapshots list 9:00 AM-1:00 PM; its current November schedule and Visit Plano list 10:00 AM-2:00 PM.",
     "visitor_notes": [
@@ -108,7 +112,7 @@ window.MARKETS=[
     "city": "Plano",
     "day": "Saturday",
     "hours": "10 AM–2 PM",
-    "date": "2026-11-07",
+    "research_snapshot_date": "2026-11-07",
     "description": "Find produce, baked goods, and handmade crafts at Berkeley Square on West Park Boulevard."
   },
   {
@@ -118,7 +122,8 @@ window.MARKETS=[
     "address": "2722 N Josey Ln, Carrollton, TX 75007",
     "recurrence": "Every Sunday",
     "current_hours": "10:00 AM-2:00 PM",
-    "next_dated_occurrence": "2026-11-08",
+    "last_researched_occurrence": "2026-11-08",
+    "research_checked_at": "2026-11-03",
     "seasonal_hours_evidence": "The organizer's August 23 and September 27, 2026 schedule snapshots list 9:00 AM-2:00 PM; its current November schedule lists 10:00 AM-2:00 PM.",
     "visitor_notes": [
       "Organizer describes more than 20 vendors, including produce, meat, eggs, honey, bread, jam, pastries, cookies, and artisan goods",
@@ -135,7 +140,7 @@ window.MARKETS=[
     "city": "Carrollton",
     "day": "Sunday",
     "hours": "10 AM–2 PM",
-    "date": "2026-11-08",
+    "research_snapshot_date": "2026-11-08",
     "description": "Spend a Sunday browsing food and artisan stalls at Trinity Valley Shopping Center."
   },
   {
@@ -145,8 +150,9 @@ window.MARKETS=[
     "address": "4203 River Walk Dr, Flower Mound, TX 75028",
     "recurrence": "Every Sunday",
     "current_hours": "10:00 AM-2:00 PM",
-    "next_dated_occurrence": "2026-11-08",
-    "published_vendor_occurrences": [
+    "last_researched_occurrence": "2026-11-08",
+    "research_checked_at": "2026-11-03",
+    "vendor_schedule_snapshot_dates": [
       "2026-11-08",
       "2026-11-15"
     ],
@@ -166,7 +172,7 @@ window.MARKETS=[
     "city": "Flower Mound",
     "day": "Sunday",
     "hours": "10 AM–2 PM",
-    "date": "2026-11-08",
+    "research_snapshot_date": "2026-11-08",
     "description": "Head to The River Walk for Sunday market shopping, with produce, baked goods, and artisan finds."
   }
 ];

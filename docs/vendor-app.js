@@ -14,6 +14,8 @@
     ink: '#1e2923'
   };
 
+  // Historical venue/date references support archived plans and market associations only.
+  // Current dates and bookings come from the operations API.
   var OCCURRENCES = [
     { id: 'richardson', name: 'Richardson Farmers Market', short: 'Richardson', city: 'Richardson', venue: 'Dal-Rich Towne Square', address: '101 S Coit Rd, Richardson, TX 75080', date: '2026-11-07', day: 'Saturday', hours: '10 AM–2 PM', rhythm: 'weekly', fee: 45 },
     { id: 'arlington', name: 'Downtown Arlington Farmers Market', short: 'Downtown Arlington', city: 'Arlington', venue: 'Front & Center streets', address: '300 W Front St, Arlington, TX 76011', date: '2026-11-07', day: 'Saturday', hours: '10 AM–2 PM', rhythm: 'weekly', fee: 45 },
@@ -1016,30 +1018,11 @@
   }
 
   function reservationsView() {
-    var draft = readDraft('reservation') || { marketId: '', boothSize: '10x10', notes: '' };
-    var selected = occurrenceFor(draft.marketId);
-    var booth = draft.boothSize === '20x10' ? '20x10' : '10x10';
     var requests = runtime.snapshot.reservations.slice().sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
-    return pageHeader('01 / Reservations', 'PLAN A MARKET DATE', 'Choose a sourced date and save a planning request to your account. It is not sent to the organizer or confirmed as a booking.', '') +
-      '<div class="vapp-work-grid reservation-grid">' +
-        '<form class="vapp-editor" id="vapp-reservation-form" novalidate>' +
-          '<div class="vapp-editor-head tomato"><span>NEW REQUEST</span><strong>Three clear steps.</strong></div>' +
-          '<fieldset class="vapp-step"><legend><span>01</span> Choose a market and date</legend>' +
-            '<label for="vapp-market">Market occurrence</label><select id="vapp-market" name="marketId" required><option value="">Select one of six sourced dates</option>' +
-              OCCURRENCES.map(function (item) { return '<option value="' + attr(item.id) + '"' + (item.id === draft.marketId ? ' selected' : '') + '>' + escapeHTML(item.short + ' — ' + formatDate(item.date)) + '</option>'; }).join('') +
-            '</select><div class="vapp-occurrence" data-reservation-occurrence>' + occurrenceSummary(selected) + '</div>' +
-          '</fieldset>' +
-          '<fieldset class="vapp-step"><legend><span>02</span> Pick a footprint</legend><div class="vapp-choice-grid">' +
-            '<label class="vapp-choice"><input type="radio" name="boothSize" value="10x10"' + (booth === '10x10' ? ' checked' : '') + '><span><strong>10 × 10 FT</strong><small>' + (selected ? '$' + selected.fee + ' current estimate' : '$45 weekly / $60 monthly estimate') + '</small></span></label>' +
-            '<label class="vapp-choice"><input type="radio" name="boothSize" value="20x10"' + (booth === '20x10' ? ' checked' : '') + '><span><strong>20 × 10 FT</strong><small>Price not published · quote needed</small></span></label>' +
-          '</div></fieldset>' +
-          '<fieldset class="vapp-step"><legend><span>03</span> Add notes and review</legend><label for="vapp-reservation-notes">Planning notes <span class="vapp-optional">Optional · not sent to market staff</span></label><textarea id="vapp-reservation-notes" name="notes" maxlength="240" rows="4" placeholder="Equipment, access needs, or questions to resolve before booking.">' + escapeHTML(draft.notes || '') + '</textarea><div class="vapp-count" data-count-for="vapp-reservation-notes">' + String((draft.notes || '').length) + ' / 240</div><div class="vapp-review-strip" data-reservation-review>' + reservationReview(selected, booth) + '</div></fieldset>' +
-          '<div class="vapp-form-actions"><button class="vapp-button primary" type="submit">Save planning request</button><p>Private account record · no organizer submission, charge, or booth allocation.</p></div>' +
-        '</form>' +
-        '<section class="vapp-stack"><div class="vapp-section-bar"><div><span class="vapp-kicker">Your planning ledger</span><h2>Saved requests</h2></div><span>' + requests.length + ' total</span></div>' +
-          (requests.length ? requests.map(reservationCard).join('') : emptyState('00', 'No saved requests', 'Your first saved request will appear here. It is not a confirmed booking.', '')) +
-        '</section>' +
-      '</div>';
+    return pageHeader('Planning archive', 'YOUR HISTORICAL PLANS.', 'Saved planning records are kept here for reference. Their dates and price estimates are historical; they are not current availability or confirmed bookings.', '<a class="vapp-button primary" href="#operations/my-bookings">Open applications & bookings →</a>') +
+      '<section class="vapp-ground-rules"><strong>Use the current booking workflow for new dates.</strong><p>New applications, requests, decisions, and arrival details live in <a href="#operations/my-bookings">Applications & bookings</a>. This archive does not create new requests or change any organizer booking.</p></section>' +
+      '<section class="vapp-stack"><div class="vapp-section-bar"><div><span class="vapp-kicker">Read-only history</span><h2>Saved planning records</h2></div><span>' + requests.length + ' total</span></div>' +
+      (requests.length ? requests.map(reservationCard).join('') : emptyState('00', 'No historical plans', 'Your current applications and booking requests are available in the booking workspace.', '<a href="#operations/my-bookings">Open bookings →</a>')) + '</section>';
   }
 
   function occurrenceSummary(item) {
@@ -1056,9 +1039,9 @@
   function reservationCard(item) {
     var market = occurrenceFor(item.marketId, item.date);
     var active = item.status === 'requested';
-    return '<article class="vapp-record' + (active ? '' : ' is-muted') + '"><div class="vapp-record-top"><span class="vapp-status ' + attr(item.status) + '">' + escapeHTML(statusLabel(item.status)) + '</span><span>' + escapeHTML(formatTimestamp(item.updatedAt || item.createdAt)) + '</span></div><h3>' + escapeHTML(market ? market.short : item.marketId) + '</h3><p>' + escapeHTML(formatDate(item.date)) + ' · ' + escapeHTML(item.boothSize) + '</p><dl><div><dt>Place</dt><dd>' + escapeHTML(market ? market.venue : 'Market venue') + '</dd></div><div><dt>Estimate</dt><dd>' + (item.quoteNeeded ? 'Quote needed' : '$' + escapeHTML(item.estimatedFee == null ? '—' : item.estimatedFee)) + '</dd></div></dl>' +
+    return '<article class="vapp-record' + (active ? '' : ' is-muted') + '"><div class="vapp-record-top"><span class="vapp-status ' + attr(item.status) + '">' + escapeHTML(statusLabel(item.status)) + '</span><span>' + escapeHTML(formatTimestamp(item.updatedAt || item.createdAt)) + '</span></div><h3>' + escapeHTML(market ? market.short : item.marketId) + '</h3><p>' + escapeHTML(formatDate(item.date)) + ' · ' + escapeHTML(item.boothSize) + '</p><dl><div><dt>Place</dt><dd>' + escapeHTML(market ? market.venue : 'Market venue') + '</dd></div><div><dt>Historical estimate</dt><dd>' + (item.quoteNeeded ? 'Quote needed' : '$' + escapeHTML(item.estimatedFee == null ? '—' : item.estimatedFee)) + '</dd></div></dl>' +
       (item.notes ? '<p class="vapp-record-note">“' + escapeHTML(item.notes) + '”</p>' : '') +
-      (active ? '<button class="vapp-text-button danger" type="button" data-cancel-reservation="' + attr(item.id) + '">Cancel request</button>' : '') + '</article>';
+      '<p class="vapp-record-note">Historical planning record · no current price or attendance claim.</p></article>';
   }
 
   function bindReservations() {
