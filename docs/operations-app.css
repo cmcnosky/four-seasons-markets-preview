@@ -676,6 +676,9 @@
   .ops .ops-record dd { font-size: 14px; }
   .ops .ops-callout p { font-size: 13px; }
   .ops .ops-record-lead { font-size: 14px; }
+  .ops .ops-resource-toolbar .ops-field input, .ops .ops-resource-toolbar .ops-field select { min-height: 48px; font-size: 16px; }
+  .ops .ops-resource-toolbar .ops-field label, .ops .ops-resource-toolbar .ops-field label small { font-size: 12px; }
+  .ops .ops-resource-toolbar .ops-filter-actions .ops-button { min-height: 44px; }
 }
 
 @media print {
