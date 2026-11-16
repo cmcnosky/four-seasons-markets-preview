@@ -668,6 +668,14 @@
   .ops-auth-poster, .ops-auth-card { padding: 28px 22px; }
   .ops-dialog-grid { grid-template-columns: 1fr; }
   .ops-repeat-preview li { grid-template-columns: 1fr; }
+  .ops .ops-button { font-size: 14px; }
+  .ops .ops-link { display: inline-flex; min-height: 44px; align-items: center; padding: 8px; font-size: 13px; }
+  .ops form input, .ops form select, .ops form textarea { font-size: 16px; }
+  .ops form label, .ops form label small { font-size: 12px; }
+  .ops .ops-record dt { font-size: 12px; }
+  .ops .ops-record dd { font-size: 14px; }
+  .ops .ops-callout p { font-size: 13px; }
+  .ops .ops-record-lead { font-size: 14px; }
 }
 
 @media print {
