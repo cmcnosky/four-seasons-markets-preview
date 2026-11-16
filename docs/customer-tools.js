@@ -332,14 +332,20 @@
     return `<figure class="customer-area-map"><svg role="img" aria-labelledby="customer-map-title customer-map-desc" viewBox="0 0 720 400"><title id="customer-map-title">Relative locations of researched market venues</title><desc id="customer-map-desc">A coordinate plot showing approximate relative positions. It is not a street map or confirmation of a market date. Each market name opens its details and directions link.</desc><g class="customer-map-grid" aria-hidden="true"><path d="M40 115H680M40 205H680M40 295H680M200 35V365M360 35V365M520 35V365"></path></g>${marketPoints}${origin}<g class="customer-map-north"><path d="M680 50v35m0-35-8 13m8-13 8 13"></path><text x="674" y="44">N</text></g></svg><figcaption>Approximate relative positions from researched addresses · not a street map or a confirmed date. Open a market for turn-by-turn directions.</figcaption></figure>`;
   }
 
-  function statusNote() {
+  function statusNoteCopy() {
     const hasCurrentDatedRecord = state.occurrences.some(item => isCurrentDatedOccurrence(item));
-    const copy = state.scheduleCached
+    return state.scheduleCached
       ? `${scheduleSummary()} ${state.language === 'es' ? 'El estado, la lista y las fechas guardadas pueden haber cambiado. La disponibilidad de reservas no se muestra desde la copia guardada; confirme con el organizador.' : 'Saved status, lineup, and dates may have changed. Booking availability is not shown from the saved copy; confirm with the organizer.'}`
       : hasCurrentDatedRecord
       ? `${scheduleSummary()} ${state.language === 'es' ? 'Revise cada mercado para ver el estado programado, retrasado o cancelado y su lista confirmada. Esta vista previa no demuestra por sí sola la autorización del organizador; verifique la fuente del organizador antes de viajar.' : 'Check each market for scheduled, delayed, or cancelled status and its confirmed lineup. This preview does not by itself prove organizer authorization; verify the organizer source before traveling.'}`
       : `${scheduleSummary()} ${state.language === 'es' ? 'Los lugares investigados siguen disponibles para descubrirlos, pero no confirman una fecha, hora ni lista futura.' : 'Researched venues remain available for discovery, but they do not confirm a future date, time, or lineup.'}`;
-    return `<div class="notice"><span aria-hidden="true">ⓘ</span><p><strong>A little planning goes a long way.</strong> ${escapeHtml(copy)} <a href="${OFFICIAL_SCHEDULE}" target="_blank" rel="noopener">Check the official schedule ↗</a></p></div>`;
+  }
+  function statusNote() {
+    return `<div class="notice" data-customer-schedule-notice><span aria-hidden="true">ⓘ</span><p><strong>A little planning goes a long way.</strong> <span data-customer-schedule-copy role="status">${escapeHtml(statusNoteCopy())}</span> <a href="${OFFICIAL_SCHEDULE}" target="_blank" rel="noopener">Check the official schedule ↗</a></p></div>`;
+  }
+  function refreshScheduleNotice() {
+    const copy = document.querySelector('[data-customer-schedule-copy]');
+    if (copy) copy.textContent = statusNoteCopy();
   }
 
   function homeSchedule(markets) {
@@ -638,7 +644,10 @@
       restoreHomeFinder(snapshot);
     }
     if (page.startsWith('market/')) window.FSMRender?.();
-    if (page === 'markets') window.FSMFilterMarkets?.();
+    if (page === 'markets') {
+      window.FSMFilterMarkets?.();
+      refreshScheduleNotice();
+    }
   }
 
   function savedPage(saved, markets, vendors, renderMarket, renderVendor) {
@@ -802,7 +811,8 @@
       sanitizeSaved, mergeSaved, removeSaved, parseSavedImport, savedExport, authChanged,
       cardMarket, timeLabel, scheduleSummary, scheduleCachePayload, readScheduleCache, setScheduleMetadata,
       loadCustomerPreferences, saveFollows, cloudFollow, localFollow, isCurrentDatedOccurrence, currentCentralDate,
-      detailDateHeading, pendingFollowIntents, copySavedExport, homeFinderSnapshot, restoreHomeFinder, updateFollowSyncStatus
+      detailDateHeading, pendingFollowIntents, copySavedExport, homeFinderSnapshot, restoreHomeFinder, updateFollowSyncStatus,
+      statusNoteCopy, refreshScheduleNotice
     }
   };
   loadPublicState();
